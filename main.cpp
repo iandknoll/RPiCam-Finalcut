@@ -37,8 +37,8 @@ class MainButton : public finalcut::FButton
 	public:
 		//All subsequent members will be public
 
-		explicit MainButton (finalcut:FWidget* parent = nullptr)
-			 : finalcut:FButton{parent}
+		explicit MainButton (finalcut::FWidget* parent = nullptr)
+			 : finalcut::FButton{parent}
 		{
 			//Method with same name as class = "constructor"
 			//Constructor is always called when an object of the class is made
@@ -71,7 +71,7 @@ class MainButton : public finalcut::FButton
 			//Defines a function for setup variables
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 			setText ("Start Video");
-			setGeometry(finalcut:FPoint{20,7}, finalcut::FSize{20,1});
+			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{20,1});
 		}
 
 		void initCallbacks()
@@ -80,38 +80,31 @@ class MainButton : public finalcut::FButton
 			addCallback
 			(
 				"clicked",			//Callback Signal
-				&MainButton::cb_cambutton	//Function Pointer
-				std::ref(*this)			//First function arg
-				std::ref(parent)		//Second function arg
+				this,				//Instance pointer
+				&MainButton::cb_cambutton	//Member method pointer
 			);
-			//Side-note: std::ref and std:cref (unused) are helper functions--
-			//They generate objects of type std::reference wrapper.
-			//As implied, std::reference_wrapper wraps references (via a pointer?)--
-			//Allowing them to be treated like objects. (Specifically, being copyable)
-			//In turn, a reference is a alternate name for an existing object/variable--
-			//It's sort of like a pointer (an alternate way of accessing the same object)--
-			//But differs in that it's still the same type as said underlying object.
-			//Modifying a reference modifies the underlying variable, and v.versa(?)
-			//std::cref holds a const reference (underlying object can't be modified via it)--
-			//While std:ref holds a reference that can modifying the underlying object
-
-			//(At the moment, I don't fully get the need for a reference wrapper vs. pointer--
-			//Nor reference vs. variable. Other than some upcoming functions expecting them--
-			//But then I'm new to C++  ¯\_(ツ)_/¯ )
 		}
 
-		void cb_cambutton (finalcut::FButton& but, finalcut::FDialog& dgl)
+		void cb_cambutton ()
 		{
 			//Function for handling what happens when we press our button
-			//Takes as input a reference to an object of type "finalcut::FButton"
-			//And a reference to an object of type "finalcut::FDialog"
-			//(more on what references are later)
 
-			//Change text of referenced button
-			but.setText("&Stop Video");
+			//Change text of  button
+			setText("&Stop Video");
 
-			//Redraw referenced dialog
-			dgl.redraw();
+			//First, we get a pointer to the parent widget using getParent()
+			//Initially, the pointer is type FWidget*, but we need FDialog*
+			//This is accomplished via static_cast<finalcut::FDialog*>
+			//Finally, we store that pointer as parent_dialog--
+			//Using auto to allow the compiller to deduce the correct type
+			auto parent_dialog = static_cast<finalcut::Fdialog*>(getParent());
+
+			//Null pointers evaluate as false, so check we got pointer succesfully
+			if(parent_dialog)
+				//If so, use that pointer to redraw the parent dialog
+				parent_dialog->redraw();
+				//Side-Note: When trying to access a class method:
+				//"->" is for pointers, while "." is for objects
 		}
 }
 
