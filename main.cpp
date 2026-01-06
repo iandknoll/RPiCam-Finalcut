@@ -146,7 +146,7 @@ class FileName : public finalcut::FLineEdit
 		//All subequent members will be public
 
 		explicit FileName (finalcut::FWidget* parent = nullptr)
-			 : finalcut::FlineEdit{parent}
+			 : finalcut::FLineEdit{parent}
 		{
 			//Constructor, as previously discussed
 
@@ -165,11 +165,11 @@ class FileName : public finalcut::FLineEdit
 			//Get cirrent date-time as suggested file name
 			std::string suggestion = filename_time();
 
-			setText (suggestion);
+			setText (finalcut::FString{suggestion});	//Need to convert type
 			setGeometry (finalcut::FPoint{14,2}, finalcut::FSize{30,1});
 			setLabelText("File Name: ");
 		}
-}
+};
 
 class Timer : public finalcut::FLabel
 {
@@ -179,7 +179,7 @@ class Timer : public finalcut::FLabel
 		//All subsequent members will be public
 
 		explicit Timer (finalcut::FWidget* parent = nullptr)
-			 : finalcut::Flabel{parent}
+			 : finalcut::FLabel{parent}
 		{
 			//Constructor, as previously discussed
 
@@ -196,9 +196,9 @@ class Timer : public finalcut::FLabel
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 
 			setText("[]");
-			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{40,1});
+			setGeometry(finalcut::FPoint{20,9}, finalcut::FSize{40,1});
 		}
-}
+};
 
 
 auto main (int argc, char* argv[]) -> int
@@ -213,7 +213,7 @@ auto main (int argc, char* argv[]) -> int
 	FileName input(&dialog);
 
 	//Create label object of our custom timer class, assigning "dialog" as parent
-	Timer status(&dialog)
+	Timer status(&dialog);
 
 	//Create object of our MainButton class, assigning "dialog" as parent
 	MainButton filebutton(&dialog);
