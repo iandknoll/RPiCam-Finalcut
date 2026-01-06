@@ -25,9 +25,9 @@ auto filename_time() -> std::string
 	return output;
 }
 
-class MainButton : public finalcut::FButton
+class MainDialog : public finalcut::FDialog
 {
-	//Defining a new class to handle our main button
+	//Defining a new class to handle our main dialog box
 	//Colon defines inheretance--
 	//"MainButton" class will inherit from "finalcut::FButton" class
 	//ie, it will possess all the same members (attributes and methods)
@@ -37,8 +37,8 @@ class MainButton : public finalcut::FButton
 	public:
 		//All subsequent members will be public
 
-		explicit MainButton (finalcut::FWidget* parent = nullptr)
-			 : finalcut::FButton{parent}
+		explicit MainDialog (finalcut::FWidget* parent = nullptr)
+			 : finalcut::FDialog{parent}
 		{
 			//Method with same name as class = "constructor"
 			//Constructor is always called when an object of the class is made
@@ -50,8 +50,8 @@ class MainButton : public finalcut::FButton
 			//Specifically, the widget that serves as our button's parent
 			//If no input is given, a default null pointer is used.
 
-			//Finally, we have the method inherit from FButton--
-			//Specifically, an instance of FButton w/ pointer "parent" as input
+			//Finally, we have the method inherit from FDialog--
+			//Specifically, an instance of FDialog w/ pointer "parent" as input
 
 
 			//Side Note: A "conversion function" converts one type to another.
@@ -59,7 +59,36 @@ class MainButton : public finalcut::FButton
 			//Any constructor with one input is a conversion function--
 			//Since it shows how to convert that input type to our new class.
 
-			//Setup callbacks (using user-defined function further down)
+			//Setup function(s) (defined further down)
+			initLayout();
+		}
+
+	private:
+		//All subsequent members will be private
+
+		void initLayout()
+		{
+			//Defines a function for startup variables
+			setText ("Reaching Task Camera Control");
+			setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});	//x,y w,h
+		}
+};
+
+class MainButton : public finalcut::FButton
+{
+	//Defining a new class to handle our main button
+	//It will inherit properties from the "finalcut::FButton" class
+
+	public:
+		//All subsequent members will be public
+
+		explicit MainButton (finalcut::FWidget* parent = nullptr)
+			 : finalcut::FButton{parent}
+		{
+			//Constructor, as previously discussed
+
+			//Setup function(s) (defined further down)
+			initLayout();
 			initCallbacks();
 		}
 
@@ -97,7 +126,7 @@ class MainButton : public finalcut::FButton
 			//This is accomplished via static_cast<finalcut::FDialog*>
 			//Finally, we store that pointer as parent_dialog--
 			//Using auto to allow the compiller to deduce the correct type
-			auto parent_dialog = static_cast<finalcut::Fdialog*>(getParent());
+			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
 
 			//Null pointers evaluate as false, so check we got pointer succesfully
 			if(parent_dialog)
@@ -106,55 +135,88 @@ class MainButton : public finalcut::FButton
 				//Side-Note: When trying to access a class method:
 				//"->" is for pointers, while "." is for objects
 		}
+};
+
+class FileName : public finalcut::FLineEdit
+{
+	//Defining a new class to handle our filename input
+	//It will inherit properties from the "finalcut:FlineEdit" class
+
+	public:
+		//All subequent members will be public
+
+		explicit FileName (finalcut::FWidget* parent = nullptr)
+			 : finalcut::FlineEdit{parent}
+		{
+			//Constructor, as previously discussed
+
+			//Setup function(s) (defined further down)
+			initLayout();
+		}
+
+	private:
+		//All subsequent members will be private
+
+		void initLayout()
+		{
+			//Defines a function for setup variables
+			//(Here FPoint is relative to parent dialog) (x,y w,h)
+
+			//Get cirrent date-time as suggested file name
+			std::string suggestion = filename_time();
+
+			setText (suggestion);
+			setGeometry (finalcut::FPoint{14,2}, finalcut::FSize{30,1});
+			setLabelText("File Name: ");
+		}
 }
+
+class Timer : public finalcut::FLabel
+{
+	//Defining a new class to handle our timer (or lack thereof)
+
+	public:
+		//All subsequent members will be public
+
+		explicit Timer (finalcut::FWidget* parent = nullptr)
+			 : finalcut::Flabel{parent}
+		{
+			//Constructor, as previously discussed
+
+			//Setup function(s) (defined further down)
+			initLayout();
+		}
+
+	private:
+		//All subsequent members will be private
+
+		void initLayout()
+		{
+			//Defines a function for setup variables
+			//(Here FPoint is relative to parent dialog) (x,y w,h)
+
+			setText("[]");
+			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{40,1});
+		}
+}
+
 
 auto main (int argc, char* argv[]) -> int
 {
+	// Create the main application object, which manages the Finalcut setup
 	finalcut::FApplication app(argc, argv);
 
-	//Create "dialog" object w/ type finalcut::FDialog, assigning "app" as parent
-	//This type is base class for dialog windows.
-	finalcut::FDialog dialog(&app);
+	//Create object of our custom dialog box class, w "dialog" as instance name
+	MainDialog dialog(&app);
 
-	//Setup Dialog Box
-	dialog.setText ("Reaching Task Camera Control");
-	dialog.setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});  //x,y w,h
+	//Create input object of our custom input class, assigining "dialog" as parent
+	FileName input(&dialog);
 
+	//Create label object of our custom timer class, assigning "dialog" as parent
+	Timer status(&dialog)
 
-	//Get current-date time as suggested file name
-	std::string suggestion = filename_time();
-
-	//Create "input" object w/ type finalcut::FLineEdit, assigning "dialog" as parent
-	//String at start will be default input
-	finalcut::FLineEdit input(suggestion, &dialog);
-
-	//Setup input object (Here FPoint relative to dialog)
-	input.setGeometry (finalcut::FPoint{14,2}, finalcut::FSize{30,1});
-	input.setLabelText("File Name: ");
-
-
-	//Create "label" object w/ type finalcut::FLabel, assigning "dialog" as parent
-	finalcut::FLabel label("In the future a timer will go here!", &dialog);
-
-	//Setup label object (Here FPoint relative to dialog)
-	label.setGeometry(finalcut::FPoint{2,4}, finalcut::FSize{40,1});
-
-
-	//Create "button" object w/ type finalcut::FButton, assigning "dialog" as parent
-	//String at start will be default input
-	finalcut::FButton button("StartVideo", &dialog);
-
-	//Setup button object (Here FPoint relative to dialog)
-	button.setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{20,1});
-
-	//Create callback for when button is clicked
-	button.addCallback
-	(
-		"clicked",		//Callback Signal
-		&cb_cambutton,		//Function Pointer
-		std::ref(button),	//First function argument
-		std::ref(dialog)	//Second function argument
-	);
+	//Create object of our MainButton class, assigning "dialog" as parent
+	MainButton filebutton(&dialog);
 
 	//Sets "dialog" as the main widget for the application.
 	finalcut::FWidget::setMainWidget(&dialog);
