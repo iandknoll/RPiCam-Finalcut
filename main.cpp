@@ -1,6 +1,7 @@
-#include <final/final.h> //Includes the basic FinalCut library
-#include <ctime> //Need for current date/time
-#include <string> //Need to use strings
+#include <final/final.h> 	//Includes the basic FinalCut library
+#include <ctime> 			//Need for current date/time
+#include <string> 			//Need to use strings
+#include <filesystem> 		//Need to check if file(s) exist
 
 auto filename_time() -> std::string
 {
@@ -61,11 +62,19 @@ class MainDialog : public finalcut::FDialog
 
 			//Setup function(s) (defined further down)
 			initLayout();
+			initCallbacks();
 		}
 
 	private:
 		//All subsequent members will be private
-
+		
+		//Initialize child widgets (defined elsewhere):
+		FileName input{this};			//File name input
+		MainButton filebutton{this};	//Main button
+		Timer status{this};				//Timer/info
+		//Widgets (and their functionality) are initalized here, in the parent--
+		//This makes handling inter-widget interaction easier
+		
 		void initLayout()
 		{
 			//Defines a function for startup variables
@@ -74,6 +83,102 @@ class MainDialog : public finalcut::FDialog
 
 			//Run the inheritted classes initLayout (no effect, but good practice)
 			finalcut::FDialog::initLayout();
+		}
+		
+		void initCallbacks()
+		{
+				filebutton.addCallback
+				(
+					"clicked",				//Callback Signal
+					this,					//Instance pointer
+					&MainDialog::cb_button	//Member method pointer
+				);
+		}
+		
+		void cb_button()
+		{
+			//Function for handling what happens when we press our button
+			//As input, we take a reference to a "FileName" object
+			//This enables us to use the current text of it in callback
+
+			//Check button state:
+			if (filebutton.getText() == "Start Video")
+			{
+				//Our click indicates we want to start recording
+
+				//Get the text from our user input:
+				auto filename = input.getText();
+				
+				//By default, filename will be of FString type--
+				//For validation, we need it to be std::string, so convert:
+				std::string std_filename = filename.toString();
+				
+				
+				//Check filename for issues:
+				if (std_filename.empty() || std_filename.length() > 255)
+				{
+					//filename has bad length
+					
+					//push error message to status:
+					status.setText("ERROR: Improper name length")
+				}
+				else if (std_filename.find_first_of("\\/:*?\"<>|") != std::string::npos)
+				{
+					//std::string::npos is result if substring not found
+					//Ergo, != indicates invalid character found
+
+					//push error message to status:
+					status.setText("ERROR: Name contains invalid characters: \\/:*?\"<>|")
+				}
+				else if (!std_filename.ends_with(".mp4"))
+				{
+					//file does not have proper file extension
+					//ALSO NOTE: THIS IS C++ 20 FUNCTIONALITY
+					//It may not work depending on compilation
+					
+					//push error message to status:
+					status.setText("ERROR: File must have .mp4 extension")
+				}
+				else if (std::filesystem::exists(std_filename))
+				{
+					//file already exist
+					//note that unlike priors, this won't neccesarily end function
+					
+					//push warning to status
+					status.setText("WARNING: File already exists. Overwrite?")
+				}
+				else
+				{
+					//no further errors: we can start recording!
+				}
+			}
+			else
+			{
+				//Our click indicates want to stop recording
+			}
+
+			//Change text of  button
+			filebutton.setText("&Stop Video");
+			
+			//To update the screen based on our changes:
+			//First, we get a pointer to the parent widget using getParent()
+			//Initially, the pointer is type FWidget*, but we need FDialog*
+			//This is accomplished via static_cast<finalcut::FDialog*>
+			//Finally, we store that pointer as parent_dialog--
+			//Using auto to allow the compiller to deduce the correct type
+			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
+
+			//Null pointers evaluate as false, so check we got pointer succesfully
+			if(parent_dialog)
+			{
+				//If so, use that pointer to redraw the parent dialog
+				parent_dialog->redraw();
+				//Side-Note 1: When trying to access a class method:
+				//"->" is for pointers, while "." is for objects
+
+				//Side-Note 2: In C++, one-line if statements do NOT require {}
+				//For consistency, safety, and familarity, I always include them
+			}
 		}
 };
 
@@ -94,18 +199,6 @@ class MainButton : public finalcut::FButton
 			initLayout();
 		}
 
-		void setFileNameInput(FileName* input)
-		{
-			//To tie FileName input into button behaviour, we need a seperate function
-			//This function is public so we can modify it after creating the object
-
-			//Define variable "fileInput" via input-- a pointer to a "FileName" object
-			fileInput = input;
-
-			//Initialize Callbacks-- have to wait until now as they're reliant on fileInput
-			initCallbacks();
-		}
-
 	private:
 		//All subsequent members will be private
 
@@ -118,61 +211,6 @@ class MainButton : public finalcut::FButton
 
 			//Run the inheritted classes initLayout (no effect, but good practice)
 			finalcut::FButton::initLayout();
-		}
-
-		void initCallbacks()
-		{
-			//Defines a function for setting up callbacks
-			addCallback
-			(
-				"clicked",			//Callback Signal
-				this,				//Instance pointer
-				&MainButton::cb_cambutton,	//Member method pointer
-				std::ref(*fileInput)		//Pass FileName by reference
-			);
-		}
-
-		void cb_cambutton (FileName& input)
-		{
-			//Function for handling what happens when we press our button
-			//As input, we take a reference to a "FileName" object
-			//This enables us to use the current text of it in callback
-
-			//Check button state:
-			if (getText() == "Start Video")
-			{
-				//Our click indicates we want to start recording
-
-				//Get the text from our user input:
-				auto filename = input.getText();
-			}
-			else
-			{
-				//Our click indicates want to stop recording
-			}
-
-			//Change text of  button
-			setText("&Stop Video");
-
-			//To update the screen based on our changes:
-			//First, we get a pointer to the parent widget using getParent()
-			//Initially, the pointer is type FWidget*, but we need FDialog*
-			//This is accomplished via static_cast<finalcut::FDialog*>
-			//Finally, we store that pointer as parent_dialog--
-			//Using auto to allow the compiller to deduce the correct type
-			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
-
-			//Null pointers evaluate as false, so check we got pointer succesfully
-			if(parent_dialog)
-			{
-				//If so, use that pointer to redraw the parent dialog
-				parent_dialog->redraw();
-				//Side-Note 1: When trying to access a class method:
-				//"->" is for pointers, while "." is for objects
-
-				//Side-Note 2: In C++, one-line if statements do NOT require {}
-				//For consistency, safety, and familarity, I always include them
-			}
 		}
 };
 
@@ -201,7 +239,7 @@ class FileName : public finalcut::FLineEdit
 			//Defines a function for setup variables
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 
-			//Get cirrent date-time as suggested file name
+			//Get current date-time as suggested file name
 			std::string suggestion = filename_time();
 
 			setText (finalcut::FString{suggestion});	//Need to convert type
@@ -210,6 +248,9 @@ class FileName : public finalcut::FLineEdit
 
 			//Run the inheritted classes initLayout (no effect, but good practice)
 			finalcut::FLineEdit::initLayout();
+			
+			//NOTE TO SELF: We can impose restrictions on the input--
+			//This would probably be good to prevent invalid filename characters
 		}
 };
 
@@ -252,16 +293,8 @@ auto main (int argc, char* argv[]) -> int
 	finalcut::FApplication app(argc, argv);
 
 	//Create object of our custom dialog box class, w "dialog" as instance name
+	//Since we setup our class to initalize it's children, we don't need to do that here
 	MainDialog dialog(&app);
-
-	//Create input object of our custom input class, assigining "dialog" as parent
-	FileName input(&dialog);
-
-	//Create label object of our custom timer class, assigning "dialog" as parent
-	Timer status(&dialog);
-
-	//Create object of our MainButton class, assigning "dialog" as parent
-	MainButton filebutton(&dialog);
 
 	//Sets "dialog" as the main widget for the application.
 	finalcut::FWidget::setMainWidget(&dialog);
