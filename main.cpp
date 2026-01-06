@@ -71,6 +71,9 @@ class MainDialog : public finalcut::FDialog
 			//Defines a function for startup variables
 			setText ("Reaching Task Camera Control");
 			setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});	//x,y w,h
+
+			//Run the inheritted classes initLayout (no effect, but good practice)
+			finalcut::FDialog::initLayout();
 		}
 };
 
@@ -89,6 +92,17 @@ class MainButton : public finalcut::FButton
 
 			//Setup function(s) (defined further down)
 			initLayout();
+		}
+
+		void setFileNameInput(FileName* input)
+		{
+			//To tie FileName input into button behaviour, we need a seperate function
+			//This function is public so we can modify it after creating the object
+
+			//Define variable "fileInput" via input-- a pointer to a "FileName" object
+			fileInput = input;
+
+			//Initialize Callbacks-- have to wait until now as they're reliant on fileInput
 			initCallbacks();
 		}
 
@@ -101,6 +115,9 @@ class MainButton : public finalcut::FButton
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 			setText ("Start Video");
 			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{20,1});
+
+			//Run the inheritted classes initLayout (no effect, but good practice)
+			finalcut::FButton::initLayout();
 		}
 
 		void initCallbacks()
@@ -110,17 +127,34 @@ class MainButton : public finalcut::FButton
 			(
 				"clicked",			//Callback Signal
 				this,				//Instance pointer
-				&MainButton::cb_cambutton	//Member method pointer
+				&MainButton::cb_cambutton,	//Member method pointer
+				std::ref(*fileInput)		//Pass FileName by reference
 			);
 		}
 
-		void cb_cambutton ()
+		void cb_cambutton (FileName& input)
 		{
 			//Function for handling what happens when we press our button
+			//As input, we take a reference to a "FileName" object
+			//This enables us to use the current text of it in callback
+
+			//Check button state:
+			if (getText() == "Start Video")
+			{
+				//Our click indicates we want to start recording
+
+				//Get the text from our user input:
+				auto filename = input.getText();
+			}
+			else
+			{
+				//Our click indicates want to stop recording
+			}
 
 			//Change text of  button
 			setText("&Stop Video");
 
+			//To update the screen based on our changes:
 			//First, we get a pointer to the parent widget using getParent()
 			//Initially, the pointer is type FWidget*, but we need FDialog*
 			//This is accomplished via static_cast<finalcut::FDialog*>
@@ -130,10 +164,15 @@ class MainButton : public finalcut::FButton
 
 			//Null pointers evaluate as false, so check we got pointer succesfully
 			if(parent_dialog)
+			{
 				//If so, use that pointer to redraw the parent dialog
 				parent_dialog->redraw();
-				//Side-Note: When trying to access a class method:
+				//Side-Note 1: When trying to access a class method:
 				//"->" is for pointers, while "." is for objects
+
+				//Side-Note 2: In C++, one-line if statements do NOT require {}
+				//For consistency, safety, and familarity, I always include them
+			}
 		}
 };
 
@@ -168,6 +207,9 @@ class FileName : public finalcut::FLineEdit
 			setText (finalcut::FString{suggestion});	//Need to convert type
 			setGeometry (finalcut::FPoint{14,2}, finalcut::FSize{30,1});
 			setLabelText("File Name: ");
+
+			//Run the inheritted classes initLayout (no effect, but good practice)
+			finalcut::FLineEdit::initLayout();
 		}
 };
 
@@ -197,6 +239,9 @@ class Timer : public finalcut::FLabel
 
 			setText("[]");
 			setGeometry(finalcut::FPoint{20,9}, finalcut::FSize{40,1});
+
+			//Run the inheritted classes initLayout (no effect, but good practice)
+			finalcut::FLabel::initLayout();
 		}
 };
 
