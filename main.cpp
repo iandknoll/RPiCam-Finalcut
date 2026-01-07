@@ -48,7 +48,7 @@ class MainDialog : public finalcut::FDialog
 			//This is mostly a safety measure to prevent wrong method use
 
 			//This takes a pointer to a Finalcut Widget as input--
-			//Specifically, the widget that serves as our button's parent
+			//Specifically, the widget that serves as our dialog's parent
 			//If no input is given, a default null pointer is used.
 
 			//Finally, we have the method inherit from FDialog--
@@ -63,17 +63,26 @@ class MainDialog : public finalcut::FDialog
 			//Setup function(s) (defined further down)
 			initLayout();
 			initCallbacks();
+			
+			//Call button visibility function (defined later) to set initial state
+			updateButtonVisibility();
 		}
 
 	private:
 		//All subsequent members will be private
 		
+		
 		//Initialize child widgets (defined elsewhere):
-		FileName input{this};			//File name input
-		MainButton filebutton{this};	//Main button
-		Timer status{this};				//Timer/info
+		FileName input{this};				//File name input
+		ConfirmButton confirmbutton{this};	//Main button
+		YesButton yesbutton{this};			//Yes button
+		NoButton nobutton{this};			//No button
+		Timer status{this};					//Timer/info
 		//Widgets (and their functionality) are initalized here, in the parent--
 		//This makes handling inter-widget interaction easier
+		
+		//Define a boolean to handle what button set is currently visible:
+		bool showYesNo{false};
 		
 		void initLayout()
 		{
@@ -87,15 +96,29 @@ class MainDialog : public finalcut::FDialog
 		
 		void initCallbacks()
 		{
-				filebutton.addCallback
+				confirmbutton.addCallback
 				(
 					"clicked",				//Callback Signal
 					this,					//Instance pointer
-					&MainDialog::cb_button	//Member method pointer
+					&MainDialog::cb_cbutton	//Member method pointer
+				);
+				
+				yesbutton.addCallback
+				(
+					"clicked",				//Callback Signal
+					this,					//Instance pointer
+					&MainDialog::cb_ybutton	//Member method pointer
+				);
+				
+				nobutton.addCallback
+				(
+					"clicked",				//Callback Signal
+					this,					//Instance pointer
+					&MainDialog::cb_nbutton	//Member method pointer
 				);
 		}
 		
-		void cb_button()
+		void cb_cbutton()
 		{
 			//Function for handling what happens when we press our button
 			//As input, we take a reference to a "FileName" object
@@ -180,9 +203,18 @@ class MainDialog : public finalcut::FDialog
 				//For consistency, safety, and familarity, I always include them
 			}
 		}
+		
+		void updateButtonVisibility()
+		{
+			confirmbutton.setVisible(!showYesNo)	//confirm button visible if Y/N isn't
+			yesbutton.setVisible(showYesNo)			//yes button visible if flag tripped
+			nobutton.setVisible(showYesNo)			//no button visible if flag tripped
+			
+			//Could set focus, but since we're using clicks I don't think its needed?
+		}
 };
 
-class MainButton : public finalcut::FButton
+class ConfirmButton : public finalcut::FButton
 {
 	//Defining a new class to handle our main button
 	//It will inherit properties from the "finalcut::FButton" class
@@ -190,7 +222,7 @@ class MainButton : public finalcut::FButton
 	public:
 		//All subsequent members will be public
 
-		explicit MainButton (finalcut::FWidget* parent = nullptr)
+		explicit ConfirmButton (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FButton{parent}
 		{
 			//Constructor, as previously discussed
@@ -208,6 +240,70 @@ class MainButton : public finalcut::FButton
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 			setText ("Start Video");
 			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{20,1});
+
+			//Run the inheritted classes initLayout (no effect, but good practice)
+			finalcut::FButton::initLayout();
+		}
+};
+
+class YesButton : public finalcut::FButton
+{
+	//Defining a new class to handle our yes button
+	//It will inherit properties from the "finalcut::FButton" class
+
+	public:
+		//All subsequent members will be public
+
+		explicit YesButton (finalcut::FWidget* parent = nullptr)
+			 : finalcut::FButton{parent}
+		{
+			//Constructor, as previously discussed
+
+			//Setup function(s) (defined further down)
+			initLayout();
+		}
+
+	private:
+		//All subsequent members will be private
+
+		void initLayout()
+		{
+			//Defines a function for setup variables
+			//(Here FPoint is relative to parent dialog) (x,y w,h)
+			setText ("Yes");
+			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{8,1});
+
+			//Run the inheritted classes initLayout (no effect, but good practice)
+			finalcut::FButton::initLayout();
+		}
+};
+
+class NoButton : public finalcut::FButton
+{
+	//Defining a new class to handle our no button
+	//It will inherit properties from the "finalcut::FButton" class
+
+	public:
+		//All subsequent members will be public
+
+		explicit NoButton (finalcut::FWidget* parent = nullptr)
+			 : finalcut::FButton{parent}
+		{
+			//Constructor, as previously discussed
+
+			//Setup function(s) (defined further down)
+			initLayout();
+		}
+
+	private:
+		//All subsequent members will be private
+
+		void initLayout()
+		{
+			//Defines a function for setup variables
+			//(Here FPoint is relative to parent dialog) (x,y w,h)
+			setText ("No");
+			setGeometry(finalcut::FPoint{32,7}, finalcut::FSize{8,1});
 
 			//Run the inheritted classes initLayout (no effect, but good practice)
 			finalcut::FButton::initLayout();
