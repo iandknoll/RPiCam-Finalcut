@@ -23,10 +23,20 @@ static std::atomic<bool> stop_camera(false);	// Declare variable for signal hand
 // In brief, this prevents other threads from seeing mid-write (garbage) states.
 // This is what we're doing here with the "std::atomic<bool>" part
 
+enum class StopType {
+	USER = 0,
+	TIMEOUT = 1,
+	ERROR = -1
+};
+// enum: user defined data type assigning names to integer values
+// mainly for readability-- using here to have plaintext names for function returns
+
 
 // CAMERA
-static void VidStart(std::string const& name) {
+static StopType VidStart(std::string const& name) {
 	// Define function for running rpicam-vid
+	// static means the function can't be called outside this source file
+	// StopType is the expected type of any return variable (defined below)
 	// "std::string const& name" passes a reference to a variable of type string as input
 	// passing by reference is faster and more memory efficient than passing by value
 	// This is because passing by value requires creating a copy of the variable
@@ -161,7 +171,7 @@ static void VidStart(std::string const& name) {
 
 			if (msg.type == RPiCamApp::MsgType::Quit)  // Quit received
 			{
-				break;	// End loop early
+				return StopType::USER_STOP;	// End loop early, user as reason
 				// Unlike the next if statement, we don't stop the camera/encoder here
 				// Reason is we can't be sure what state they're in when receiving a quit
 				// So it's better to leave handling them up to other built-in processes
@@ -170,9 +180,9 @@ static void VidStart(std::string const& name) {
 			auto now = std::chrono::high_resolution_clock::now();	// Get current time
 			if ((now - start_time) > options->timeout.value)	// If elapsed time > timeout
 			{
-				app.StopCamera();	// Stop camera hardware
-				app.StopEncoder();	// Stop encoder pipeline
-				break;				// End loop early
+				app.StopCamera();				// Stop camera hardware
+				app.StopEncoder();				// Stop encoder pipeline
+				return StopType::TIMEOUT;		// End loop early, tiemout as reason
 			}
 
 			if (stop_camera.load()) // If the user send a shutdown signal
@@ -181,7 +191,7 @@ static void VidStart(std::string const& name) {
 				
 				app.StopCamera();	// Stop camera hardware
 				app.StopEncoder();	// Stop encoder pipeline
-				break;				// End loop early				
+				return StopType::USER_STOP;	// End loop early, user as reason
 			}
 			
 			CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
@@ -221,11 +231,9 @@ static void VidStart(std::string const& name) {
 		// (A macro can be an object/variable, function (as here), or conditional)
 		// (It speed up development by reusing code w/o function calls or explicit rewrites)
 
-		return -1;
-		// If an error occured, end script w/ a return code of -1, indicating error/failure
+		return StopType::ERROR;
+		// If an error occured, end script and indicate error as stop reason
 	}
-	return 0;
-	// If we get through entire script w/o error, end with return code 0, indicating success!
 }
 
 
@@ -314,13 +322,16 @@ class MainDialog : public finalcut::FDialog
 		bool showYesNo{false};
 		
 		//Declare variable for input text so it'll be in all subsequent functions' scope
-		std::string suggestion = "";
+		std::string suggestion = filename_time();
 		
 		//Declare the filename variable so it'll be in all subsequent functions' scope
 		std::string std_filename;
 		
 		//Declare the camera's thread variable so it'll be in all subequent functions' scope
 		std::thread camera_thread;
+
+		//Declare an atomic variable to handle returns from camera
+		std::atomic<StopType> last_stop_reason_{StopType::USER};
 		
 		void initLayout()
 		{
@@ -453,15 +464,20 @@ class MainDialog : public finalcut::FDialog
 			//begin camera
 			//std::thread is the class for a C++ thread
 			//camera_thread is thus our thread object, and the code in its () its content
-			//The syntax for a thread object here is a function, then arguments to pass it
-			//Were saying "run function VidStart w/ argument std_filename in your thread"
-			//Conversly, std::thread camera_thread(VidStart(std_filename)) *wouldn't* work
-			//That syntax results in running our camera function in the *current* thread
-			//Then passing the result-- nothing-- as the function to run in the thread
-			camera_thread = std::thread(VidStart, std_filename);
-			//Side-Note: variable type, then variable name is for local variables
-			//variable name = variable_type() is for pre-defined variables
+			//As input, we give a lambda function (synonymous with anonymous function*)
+			//lambda functions use format []() {}:
+			//[] contains any variables the function will need in its operations
+			//() describes the input argument types/names (like a regular function)
+			//{} contains the actual code the lambda function will run
+			camera_thread = std::thread([this, filename = std_filename]()
+			{
+				//Run our camera function, storing rturn value in "result:
+				StopType result = VidStart(filename);
 
+				//Save result to atomic last_stop_reason, so other threads can reference
+				last_stop_reason_.store(result);
+			});
+			
 			//start stopwatch
 			status.start();
 			
@@ -479,11 +495,24 @@ class MainDialog : public finalcut::FDialog
 			
 			//reset stopwatch
 			status.stop();
-			
-			//change status text to reflect succesfull operation
-			status.setText(finalcut::FString("Video saved as: ") 
-						   << finalcut::FString(suggestion));
-			
+
+			//get the stop reason:
+			StopType reason = last_stop_reason_.load();
+
+			//change status text based on stop reason:
+			switch (reason) {
+				case StopType::USER:
+					//change status text to reflect succesful operation
+					status.setText(finalcut::FString("Video saved as: ") 
+								   << finalcut::FString(suggestion));
+				case StopType::TIMEOUT:
+					//change status text to reflect timeout
+					status.setText(finalcut::FString("MAX DURATION REACHED. Video saved as: ") 
+								   << finalcut::FString(suggestion));
+				case StopType::ERROR:
+					//change status text to reflect video error
+					status.setText(finalcut::FString("ERROR: Recording failed")
+						
 			//Get current date-time as suggested file name
 			suggestion = filename_time();
 			
