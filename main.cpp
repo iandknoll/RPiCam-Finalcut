@@ -1,3 +1,9 @@
+// FUTURE NOTE: I wrote this code in part as a learning experience for C++
+// I did my best to follow repostory implementations, bug test, and error handle
+// Nevertheless, there are likely to be shortcomings and issues not fully addressed
+// As a matter of fact, I *know* both exist, though I believe them to be minor
+// If you are maintaining this, I grant full permission to mock my feeble efforts
+
 // CAMERA DEPENDENCIES
 #include "core/rpicam_encoder.hpp" 	// Contains code for encoding video w/ rpicam
 #include "core/logging.hpp"			// Contains code for the logginc macro used
@@ -35,14 +41,14 @@ enum class StopType {
 
 // CAMERA
 static int get_colourspace_flags(std::string const &codec) {
-	//Function for handling encoder colour space
-	//Copied from rpicam_vid.cpp-- it being static there means we can't reference it
+	// Function for handling encoder colour space
+	// Copied from rpicam_vid.cpp-- it being static there means we can't reference it
 	if (codec == "mjpeg" || codec == "yuv420") {
-		//if codec uses a jpeg colorspace...
-		return RPiCamEncoder::FLAG_VIDEO_JPEG_COLOURSPACE; //return with such
+		// if codec uses a jpeg colorspace...
+		return RPiCamEncoder::FLAG_VIDEO_JPEG_COLOURSPACE; // return with such
 	}
 	else {
-		return RPiCamEncoder::FLAG_VIDEO_NONE; //otherwise, nothing needed(?)
+		return RPiCamEncoder::FLAG_VIDEO_NONE; // otherwise, nothing needed(?)
 	}
 }
 
@@ -57,14 +63,19 @@ static StopType VidStart(std::string const& name) {
 	// BUT, using a reference means modifying the parameter WILL affect the original
 	// That said, const means the function won't have write access on the variable
 
+	bool EncoderOn{false};
+	bool CameraOn{false};
+	// Setup some variables to track Camera/Encoder status for exception handling
+
+	RPiCamEncoder app;
+	// Creates an object of the class "RPiCamEncoder" with name "app"
+	// RPiCamEncoder handles the video recording pipeline
+	// We do this outside of the try block so it's in scope for catch
+	
 	try
 	{
 		// try: attempt to run the following code.
 		// If an error is detected, run the code under catch:
-
-		RPiCamEncoder app;
-		// Creates an object of the class "RPiCamEncoder" with name "app"
-		// RPiCamEncoder handles the video recording pipeline
 
 		VideoOptions *options = app.GetOptions();
 		// Creates a pointer to an object of the class "VideoOptions"
@@ -78,7 +89,7 @@ static StopType VidStart(std::string const& name) {
 		// (In a class, members must be explicitly set as public, otherwise they're private)
 		// (The later  means they can only be accessed from outside in special circumstances)
 
-
+		// Adjust these values according to your own needs:
 		options->output = name; 				// file name (here our input)
 		options->timeout.set("40min"); 		// MAX Recording time
 		options->codec  = "h264";				// codec for video encoding/decoding
@@ -120,7 +131,11 @@ static StopType VidStart(std::string const& name) {
 		// (y then defines an identifer-- a type, function, variable, etc. in said scope)
 		// (x::y then just lets us access identifier x in scope y)
 
-		app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), _1, _2, _3, _4));
+		app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), 
+			std::placeholders::_1, 
+			std::placeholders::_2, 
+			std::placeholders::_3, 
+			std::placeholders::_4));
 		// Registers callback function tied to "RPiCamEncoder" class, to handle encoded video
 		// A callback function is one that can be passed as argument to another function
 		// This one routes newly encoded frames from the encoder to an output handler
@@ -166,9 +181,13 @@ static StopType VidStart(std::string const& name) {
 		// Starts and configures our encoder, which asynchronously processes video frames
 		// while our video stream continues collection. As usual, lot going on in the
 		// background here (like setting up encoder callbacks)
+		EncoderOn = true;
+		// Encoder started, so set flag accordingly
 
 		app.StartCamera();
 		// Begins camera hardware (w/ our configured controls), and start capturing frames!
+		CameraOn = true;
+		// Camera started, so set flag accordingly
 
 		auto start_time = std::chrono::high_resolution_clock::now();
 		// Gets the current time (in high resolution) and assigns it to variable start_time
@@ -185,35 +204,62 @@ static StopType VidStart(std::string const& name) {
 
 			if (msg.type == RPiCamApp::MsgType::Quit)  // Quit received
 			{
+				if (CameraOn) {
+					app.StopCamera();	// Camera should be on, so stop it
+				}
+				if (EncoderOn) {
+					app.StopEncoder();	// Encoder should be on, so stop it
+				}
 				return StopType::USER;	// End loop early, user as reason
-				// Unlike the next if statement, we don't stop the camera/encoder here
-				// Reason is we can't be sure what state they're in when receiving a quit
-				// So it's better to leave handling them up to other built-in processes
 			}
 			else if (msg.type == RPiCamApp::MsgType::Timeout) // Camera timed out
 			{
 				LOG_ERROR("ERROR: Device timeout detected, attempting restart!");
 				// Log the issue in terminal/log file (depending on how program ran)
-
-				app.StopCamera();
-				app.StartCamera();
-				// Cycle the camera
-				// Note: cycling camera like this could *technically* lead to minor data loss
-				// That said, it'd be super minor, and timeouts like this are rare
-				// This is the exact method rpicam_vid.cpp uses, so its good enough for me!
-				
+				try {
+					app.StopCamera();
+					CameraOn = false;
+					app.StartCamera();
+					CameraOn = true;
+					// Attempt cycling the camera
+					// Note: cycling camera like this could *technically* lead to minor data loss
+					// That said, it'd be super minor, and timeouts like this are rare
+					// This is the exact method rpicam_vid.cpp uses, so its good enough for me!
+				}
+				catch (std::exception const &e) {
+					LOG_ERROR("ERROR: Camera restart failed: " << e.what());
+					// Log the issue in terminal/log file (depending on how program ran)
+	
+					if (CameraOn) {
+						app.StopCamera();	// Camera should be on, so stop it
+					}
+					if (EncoderOn) {
+						app.StopEncoder();	// Encoder should be on, so stop it
+					}
+					return StopType::ERROR;		// End loop early, error as reason
+				}
 				continue;
 			}
 			else if (msg.type != RPiCamEncoder::MsgType::RequestComplete)	//broad error check
 			{
+				if (CameraOn) {
+					app.StopCamera();	// Camera should be on, so stop it
+				}
+				if (EncoderOn) {
+					app.StopEncoder();	// Encoder should be on, so stop it
+				}
 				return StopType::ERROR;		// End loop early, error as reason
 			}
 
 			auto now = std::chrono::high_resolution_clock::now();	// Get current time
 			if ((now - start_time) > options->timeout.value)	// If elapsed time > timeout
 			{
-				app.StopCamera();				// Stop camera hardware
-				app.StopEncoder();				// Stop encoder pipeline
+				if (CameraOn) {
+					app.StopCamera();	// Camera should be on, so stop it
+				}
+				if (EncoderOn) {
+					app.StopEncoder();	// Encoder should be on, so stop it
+				}
 				return StopType::TIMEOUT;		// End loop early, timeout as reason
 			}
 
@@ -221,8 +267,12 @@ static StopType VidStart(std::string const& name) {
 			{
 				//Note: .load() is the how you read an atomic variable
 				
-				app.StopCamera();	// Stop camera hardware
-				app.StopEncoder();	// Stop encoder pipeline
+				if (CameraOn) {
+					app.StopCamera();	// Camera should be on, so stop it
+				}
+				if (EncoderOn) {
+					app.StopEncoder();	// Encoder should be on, so stop it
+				}
 				return StopType::USER;	// End loop early, user as reason
 			}
 			
@@ -255,6 +305,13 @@ static StopType VidStart(std::string const& name) {
 		// e is a constant reference, of type std::exception-- standard class for C++ errors
 		// Simply put, it's the corresponding error message for whatever failed in try.
 
+		if (CameraOn) {
+			app.StopCamera();	// Camera should be on, so stop it
+		}
+		if (EncoderOn) {
+			app.StopEncoder();	// Encoder should be on, so stop it
+		}
+		
 		LOG_ERROR("ERROR: *** " << e.what() << " ***");
 		// Use LOG_ERROR() macro to send error to log/terminal (depending on how code is run)
 		// e.what() is a method for type std::exception to outputs error as a string pointer
@@ -273,288 +330,296 @@ static StopType VidStart(std::string const& name) {
 // FRONT END
 auto filename_time() -> std::string
 {
-	//Function to get current date-time as character array
+	// Function to get current date-time as character array
 
-	//Get current time as timestamp object
-	std::time_t timestamp = std::time(NULL);
+	std::time_t timestamp = std::time(nullptr);
+	// Get current time as timestamp object
 	
-	//declare a datetime struct (std::tm)
 	std::tm datetime;
+	// declare a datetime struct (std::tm)
 	
-	//Convert our timestamp into std::tm, and assign to datetime
-	//& before timestamp and datetime is a address-of operator
-	//localtime_r wants a pointer for input-- & gives a pointer for an object
 	localtime_r(&timestamp, &datetime);
+	// Convert our timestamp into std::tm, and assign to datetime
+	// & before timestamp and datetime is a address-of operator
+	// localtime_r wants a pointer for input-- & gives a pointer for an object
 
-	//Allocate space for our string
 	char output[80];
+	// Allocate space for our string
 
-	//Write date-time to our char array
 	std::strftime(output, 80, "%m-%d-%y_%H-%M-%S.mp4", &datetime);
-
+	// Write date-time to our char array
+	
 	return output;
 }
 
 class MainDialog : public finalcut::FDialog
 {
-	//Defining a new class to handle our main dialog box
-	//Colon defines inheretance--
-	//"MainButton" class will inherit from "finalcut::FButton" class
-	//ie, it will possess all the same members (attributes and methods)
-	//"public" indicates public members of inherited class remain public
-	//(more on what a public member is later)
+	// Defining a new class to handle our main dialog box
+	// Colon defines inheretance--
+	// "MainButton" class will inherit from "finalcut::FButton" class
+	// ie, it will possess all the same members (attributes and methods)
+	// "public" indicates public members of inherited class remain public
+	// (more on what a public member is later)
 
 	public:
-		//All subsequent members will be public
+		// All subsequent members will be public
 
 		explicit MainDialog (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FDialog{parent}
 		{
-			//Method with same name as class = "constructor"
-			//Constructor is always called when an object of the class is made
-			//"explicit" is a function specifier for conversion functions
-			//It tells compilers not to allow implicit type conversions.
-			//This is mostly a safety measure to prevent wrong method use
+			// Method with same name as class = "constructor"
+			// Constructor is always called when an object of the class is made
+			// "explicit" is a function specifier for conversion functions
+			// It tells compilers not to allow implicit type conversions.
+			// This is mostly a safety measure to prevent wrong method use
 
-			//This takes a pointer to a Finalcut Widget as input--
-			//Specifically, the widget that serves as our dialog's parent
-			//If no input is given, a default null pointer is used.
+			// This takes a pointer to a Finalcut Widget as input--
+			// Specifically, the widget that serves as our dialog's parent
+			// If no input is given, a default null pointer is used.
 
-			//Finally, we have the method inherit from FDialog--
-			//Specifically, an instance of FDialog w/ pointer "parent" as input
+			// Finally, we have the method inherit from FDialog--
+			// Specifically, an instance of FDialog w/ pointer "parent" as input
 
+			// Side Note: A "conversion function" converts one type to another.
+			// They're declared w/ "operator", or "explicit" for above effect.
+			// Any constructor with one input is a conversion function--
+			// Since it shows how to convert that input type to our new class.
 
-			//Side Note: A "conversion function" converts one type to another.
-			//They're declared w/ "operator", or "explicit" for above effect.
-			//Any constructor with one input is a conversion function--
-			//Since it shows how to convert that input type to our new class.
-
-			//Setup function(s) (defined further down)
 			initLayout();
 			initCallbacks();
+			// Setup function(s) (defined further down)
 			
-			//Call button visibility function (defined later) to set initial state
 			updateButtonVisibility();
+			// Call button visibility function (defined later) to set initial state
 		}
 
 		~MainDialog()
 		{
-			//Method with ~class name = "destructor"
-			//Destructor is called when an object goes out of scope / is deleted
-			//They're used to handle any clean up operations
+			// Method with ~class name = "destructor"
+			// Destructor is called when an object goes out of scope / is deleted
+			// They're used to handle any clean up operations
 
 			if (camera_thread.joinable())
 			{
-				//Check if the camera is currently running
+				// Check if the camera is currently running
 
 				stop_camera.store(true);
-				//If so, tell the camera to shutdown
+				// If so, tell the camera to shutdown
 
 				camera_thread.join();
-				//Then wait for it to shutdown before proceeding.
+				// Then wait for it to shutdown before proceeding.
 			}
 			
 		}
 
 	private:
-		//All subsequent members will be private
+		// All subsequent members will be private
 		
 		
-		//Initialize child widgets (defined elsewhere):
-		FileName input{this};				//File name input
-		ConfirmButton confirmbutton{this};	//Main button
-		YesButton yesbutton{this};			//Yes button
-		NoButton nobutton{this};			//No button
-		Stopwatch status{this};				//Stopwatch/info
-		//Widgets (and their functionality) are initalized here, in the parent--
-		//This makes handling inter-widget interaction easier
+		// Initialize child widgets (defined elsewhere):
+		FileName input{this};				// File name input
+		ConfirmButton confirmbutton{this};	// Main button
+		YesButton yesbutton{this};			// Yes button
+		NoButton nobutton{this};			// No button
+		Stopwatch status{this};				// Stopwatch/info
+		// Widgets (and their functionality) are initalized here, in the parent--
+		// This makes handling inter-widget interaction easier
 		
-		//Define a boolean to handle what button set is currently visible:
 		bool showYesNo{false};
+		// Define a boolean to handle what button set is currently visible
 		
-		//Declare variable for input text so it'll be in all subsequent functions' scope
 		std::string suggestion = filename_time();
+		// Declare variable for input text so it'll be in all subsequent functions' scope
 		
-		//Declare the filename variable so it'll be in all subsequent functions' scope
 		std::string std_filename;
+		// Declare the filename variable so it'll be in all subsequent functions' scope
 		
-		//Declare the camera's thread variable so it'll be in all subequent functions' scope
 		std::thread camera_thread;
+		// Declare the camera's thread variable so it'll be in all subequent functions' scope
 
-		//Declare an atomic variable to handle returns from camera
 		std::atomic<StopType> last_stop_reason_{StopType::USER};
+		// Declare an atomic variable to handle returns from camera
 		
 		void initLayout()
 		{
-			//Defines a function for startup variables
+			// Defines a function for startup variables
+			
 			setText ("Reaching Task Camera Control");
 			setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});	//x,y w,h
 
-			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FDialog::initLayout();
+			// Run the inheritted class's initLayout (no effect, but good practice)
 		}
 		
 		void initCallbacks()
 		{
 				confirmbutton.addCallback
 				(
-					"clicked",				//Callback Signal
-					this,					//Instance pointer
-					&MainDialog::cb_cbutton	//Member method pointer
+					"clicked",					// Callback Signal
+					this,						// Instance pointer
+					&MainDialog::cb_cbutton		// Member method pointer
 				);
 				
 				yesbutton.addCallback
 				(
-					"clicked",				//Callback Signal
-					this,					//Instance pointer
-					&MainDialog::cb_ybutton	//Member method pointer
+					"clicked",					// Callback Signal
+					this,						// Instance pointer
+					&MainDialog::cb_ybutton		// Member method pointer
 				);
 				
 				nobutton.addCallback
 				(
-					"clicked",				//Callback Signal
-					this,					//Instance pointer
-					&MainDialog::cb_nbutton	//Member method pointer
+					"clicked",					// Callback Signal
+					this,						// Instance pointer
+					&MainDialog::cb_nbutton		// Member method pointer
 				);
 		}
 		
 		void cb_cbutton()
 		{
-			//Function for handling what happens when we press our button
+			// Function for handling what happens when we press our button
 
-			//Check button state:
+			// Check button state:
 			if (confirmbutton.getText() == "Start Video")
 			{
-				//Our click indicates we want to start recording
+				// Our click indicates we want to start recording
 
-				//Get the text from our user input:
 				auto filename = input.getText();
+				// Get the text from our user input
 				
-				//By default, filename will be of FString type--
-				//For our usage, we need it to be std::string, so convert:
 				std_filename = filename.toString();
+				// By default, filename will be of FString type--
+				// For our usage, we need it to be std::string, so convert
 				
-				
-				//Check filename for issues:
+				// Check filename for issues:
 				if (std_filename.empty())
 				{
-					//filename has bad length
+					// filename has bad length
 					
-					//push error message to status:
 					status.setText("ERROR: No file name given");
+					// push error message to status:
 				}
 				else if (std_filename.length() < 4 || std_filename.substr(std_filename.length() - 4) != ".mp4")
 				{
-					//file does not have proper file extension
-					//.substr() gives a substring of the string it is applied to
-					//It takes as it's first input a starting index, then goes to end
-					//.length() naturally gives the length of our string
-					//so by subtracting four, we get last four characters of the string
-					//or comparison is to avoid errors if name is less than four characters
+					// file does not have proper file extension
+					// .substr() gives a substring of the string it is applied to
+					// It takes as it's first input a starting index, then goes to end
+					// .length() naturally gives the length of our string
+					// so by subtracting four, we get last four characters of the string
+					// or comparison is to avoid errors if name is less than four characters
 					
-					//push error message to status:
 					status.setText("ERROR: File must have .mp4 extension");
+					// push error message to status:
 				}
 				else if (std::filesystem::exists(std_filename))
 				{
-					//file already exist
+					// file already exist
 					
-					//push warning to status
 					status.setText("WARNING: File already exists. Overwrite?");
+					// push warning to status
 					
-					//Set flag to swap buttons on redraw
 					showYesNo = true;
+					// Set flag to swap buttons on redraw
 				}
 				else
 				{
-					//no further errors: we can start recording!
-					//Handle it as a function so "Yes" can also call it
+					// no further errors: we can start recording!
+					
 					StartProtocol();
+					// Handle it as a function so "Yes" can also call it
 				}
 			}
 			else
 			{
-				//Our click indicates we want to stop recording
+				// Our click indicates we want to stop recording
+				
 				StopProtocol();
 			}
 			
-			//Regardless of above, perform updates:
+			// Regardless of above, perform updates:
 			updateButtonVisibility();
 			updateScreen();
 		}
 		
 		void cb_ybutton()
 		{
-			//Function for handling what happens when we press our button
+			// Function for handling what happens when we press our button
 			
-			//Return to main button visibility:
 			showYesNo = false;
-			
-			//Start camera/stopwatch protocols:
+			// Return to main button visibility:
+
 			StartProtocol();
+			// Start camera/stopwatch protocols:
 			
-			//Perform updates:
 			updateButtonVisibility();
 			updateScreen();
+			// Perform updates:
 		}
 		
 		void cb_nbutton()
 		{
-			//Function for handling what happens when we press our button
+			// Function for handling what happens when we press our button
 			
-			//Return to default state:			
 			showYesNo = false;
 			status.setText("");
+			// Return to default state:						
 			
-			//Perform updates
 			updateButtonVisibility();
 			updateScreen();		
+			// Perform updates			
 		}
 		
 		void StartProtocol()
 		{
-			//check that camera isn't already starting (in case of a double-click)
 			if (camera_thread.joinable()) {
-				return;		//already recording-- don't continue
+				// check that camera isn't already starting (in case of a double-click)
+				
+				return;		// already recording-- don't continue
 			}
 			
-			//begin camera
-			//std::thread is the class for a C++ thread
-			//camera_thread is thus our thread object, and the code in its () its content
-			//As input, we give a lambda function (synonymous with anonymous function*)
-			//lambda functions use format []() {}:
-			//[] contains any variables the function will need in its operations
-			//() describes the input argument types/names (like a regular function)
-			//{} contains the actual code the lambda function will run
 			camera_thread = std::thread([this, filename = std_filename]()
 			{
-				//Run our camera function, storing rturn value in "result:
+				// begin camera
+				// std::thread is the class for a C++ thread
+				// camera_thread is thus our thread object, and the code in its () its content
+				// As input, we give a lambda function (synonymous with anonymous function*)
+				// lambda functions use format []() {}:
+				// [] contains any variables the function will need in its operations
+				// () describes the input argument types/names (like a regular function)
+				// {} contains the actual code the lambda function will run
+				
 				StopType result = VidStart(filename);
+				// Run our camera function, storing rturn value in "result:				
 
-				//Save result to atomic last_stop_reason, so other threads can reference
 				last_stop_reason_.store(result);
+				// Save result to atomic last_stop_reason, so other threads can reference				
 			});
 			
-			//start stopwatch
 			status.start();
+			// start stopwatch			
 			
-			//Change main button text to indicate changed functionality:
 			confirmbutton.setText("Stop Video");
+			// Change main button text to indicate changed functionality:
 		}
 		
 		void StopProtocol()
 		{
-			
-			
-			//check if camera_thread is able to be closed:
 			if (camera_thread.joinable()) {
+				// check if camera_thread is able to be closed:
+				
 				//set stop camera flag-- .store() is write method for atomic variables
 				stop_camera.store(true);
+
+				//set temporary status text so user knows we're mid-process
+				status.setText(finalcut::FString("Stopping..."));
+
+				//redraw to reflect status text:
+				status.redraw();
 				
 				//make sure camera thread has ended before continuing
 				camera_thread.join();
 
-				//reset the thread (will have issues with .joinable() otherwise)
+				//reset the thread (so it can be properly reused)
 				camera_thread = std::thread();
 				
 				//reset stopwatch
@@ -579,6 +644,10 @@ class MainDialog : public finalcut::FDialog
 					case StopType::ERROR:
 						//change status text to reflect video error
 						status.setText(finalcut::FString("ERROR: Recording failed"));
+						break;	//exit switch
+					default:	//catch-all
+						//change status text to reflect unknown error
+						status.setText(finalcut::FString("ERROR: Unknown stop reason"));
 						break;	//exit switch
 				}
 							
