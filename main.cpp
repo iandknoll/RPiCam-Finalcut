@@ -192,7 +192,7 @@ static StopType VidStart(std::string const& name) {
 			}
 			else if (msg.type == RPiCamApp::MsgType::Timeout) // Camera timed out
 			{
-				LOG_ERROR("ERROR: Device timeout detected, attempting restart!);
+				LOG_ERROR("ERROR: Device timeout detected, attempting restart!");
 				// Log the issue in terminal/log file (depending on how program ran)
 
 				app.StopCamera();
@@ -204,13 +204,17 @@ static StopType VidStart(std::string const& name) {
 				
 				continue;
 			}
+			else if (msg.type != RPiCamEncoder::MsgType::RequestComplete)	//broad error check
+			{
+				return StopType::ERROR;		// End loop early, error as reason
+			}
 
 			auto now = std::chrono::high_resolution_clock::now();	// Get current time
 			if ((now - start_time) > options->timeout.value)	// If elapsed time > timeout
 			{
 				app.StopCamera();				// Stop camera hardware
 				app.StopEncoder();				// Stop encoder pipeline
-				return StopType::TIMEOUT;		// End loop early, tiemout as reason
+				return StopType::TIMEOUT;		// End loop early, timeout as reason
 			}
 
 			if (stop_camera.load()) // If the user send a shutdown signal
@@ -240,7 +244,7 @@ static StopType VidStart(std::string const& name) {
 			// (Then, we'd have to worry about both to destory the underlying variable!)
 			// (And of course, having to allocate the extra memory would be less efficient)
 
-			app.EncoderBuffer(completed_request, app.VideoStream());
+			app.EncodeBuffer(completed_request, app.VideoStream());
 			// Take our frame data (completed_request) and give to app method EncoderBuffer
 			// Send it alongside app.VideoStream(), containing encoder settings/methods
   		}
@@ -333,6 +337,25 @@ class MainDialog : public finalcut::FDialog
 			updateButtonVisibility();
 		}
 
+		~MainDialog()
+		{
+			//Method with ~class name = "destructor"
+			//Destructor is called when an object goes out of scope / is deleted
+			//They're used to handle any clean up operations
+
+			if (camera_thread.joinable())
+			{
+				//Check if the camera is currently running
+
+				stop_camera.store(true);
+				//If so, tell the camera to shutdown
+
+				camera_thread.join();
+				//Then wait for it to shutdown before proceeding.
+			}
+			
+		}
+
 	private:
 		//All subsequent members will be private
 		
@@ -420,13 +443,14 @@ class MainDialog : public finalcut::FDialog
 					//push error message to status:
 					status.setText("ERROR: No file name given");
 				}
-				else if (std_filename.substr(std_filename.length() - 4) != ".mp4")
+				else if (std_filename.length() < 4 || std_filename.substr(std_filename.length() - 4) != ".mp4")
 				{
 					//file does not have proper file extension
 					//.substr() gives a substring of the string it is applied to
 					//It takes as it's first input a starting index, then goes to end
 					//.length() naturally gives the length of our string
 					//so by subtracting four, we get last four characters of the string
+					//or comparison is to avoid errors if name is less than four characters
 					
 					//push error message to status:
 					status.setText("ERROR: File must have .mp4 extension");
@@ -489,6 +513,11 @@ class MainDialog : public finalcut::FDialog
 		
 		void StartProtocol()
 		{
+			//check that camera isn't already starting (in case of a double-click)
+			if (camera_thread.joinable()) {
+				return;		//already recording-- don't continue
+			}
+			
 			//begin camera
 			//std::thread is the class for a C++ thread
 			//camera_thread is thus our thread object, and the code in its () its content
@@ -515,55 +544,63 @@ class MainDialog : public finalcut::FDialog
 		
 		void StopProtocol()
 		{
-			//set stop camera flag-- .store() is write method for atomic variables
-			stop_camera.store(true);
 			
-			//make sure camera thread has ended before continuing
-			camera_thread.join();
 			
-			//reset stopwatch
-			status.stop();
+			//check if camera_thread is able to be closed:
+			if (camera_thread.joinable()) {
+				//set stop camera flag-- .store() is write method for atomic variables
+				stop_camera.store(true);
+				
+				//make sure camera thread has ended before continuing
+				camera_thread.join();
 
-			//get the stop reason:
-			StopType reason = last_stop_reason_.load();
-
-			//change status text based on stop reason:
-			switch (reason)
-			{
-				case StopType::USER:
-					//change status text to reflect succesful operation
-					status.setText(finalcut::FString("Video saved as: ") 
-								   << finalcut::FString(suggestion));
-					break;	//exit switch
-				case StopType::TIMEOUT:
-					//change status text to reflect timeout
-					status.setText(finalcut::FString("MAX DURATION REACHED. Video saved as: ") 
-								   << finalcut::FString(suggestion));
-					break;	//exit switch
-				case StopType::ERROR:
-					//change status text to reflect video error
-					status.setText(finalcut::FString("ERROR: Recording failed");
-					break;	//exit switch
+				//reset the thread (will have issues with .joinable() otherwise)
+				camera_thread = std::thread();
+				
+				//reset stopwatch
+				status.stop();
+	
+				//get the stop reason:
+				StopType reason = last_stop_reason_.load();
+	
+				//change status text based on stop reason:
+				switch (reason)
+				{
+					case StopType::USER:
+						//change status text to reflect succesful operation
+						status.setText(finalcut::FString("Video saved as: ") 
+									   << finalcut::FString(std_filename));
+						break;	//exit switch
+					case StopType::TIMEOUT:
+						//change status text to reflect timeout
+						status.setText(finalcut::FString("MAX DURATION REACHED. Video saved as: ") 
+									   << finalcut::FString(std_filename));
+						break;	//exit switch
+					case StopType::ERROR:
+						//change status text to reflect video error
+						status.setText(finalcut::FString("ERROR: Recording failed"));
+						break;	//exit switch
+				}
+							
+				//Get current date-time as suggested file name
+				suggestion = filename_time();
+				
+				//set new suggested file name:
+				input.setText (finalcut::FString {suggestion});	//Need to convert type(?)
+				
+				//Change main button text to indicate changed functionality:
+				confirmbutton.setText("Start Video");
+				
+				//now that we're all done, set flag to allow another recording:
+				stop_camera.store(false);
 			}
-						
-			//Get current date-time as suggested file name
-			suggestion = filename_time();
-			
-			//set new suggested file name:
-			input.setText (finalcut::FString {suggestion});	//Need to convert type(?)
-			
-			//Change main button text to indicate changed functionality:
-			confirmbutton.setText("Start Video");
-			
-			//now that we're all done, set flag to allow another recording:
-			stop_camera.store(false);
 		}
 		
 		void updateButtonVisibility()
 		{
-			confirmbutton.setVisible(!showYesNo)	//confirm button visible if Y/N isn't
-			yesbutton.setVisible(showYesNo)			//yes button visible if flag tripped
-			nobutton.setVisible(showYesNo)			//no button visible if flag tripped
+			confirmbutton.setVisible(!showYesNo);	//confirm button visible if Y/N isn't
+			yesbutton.setVisible(showYesNo);		//yes button visible if flag tripped
+			nobutton.setVisible(showYesNo);			//no button visible if flag tripped
 			
 			//Could set focus, but since we're using clicks I don't think its needed?
 		}
@@ -790,7 +827,7 @@ class Stopwatch : public finalcut::FLabel
 				{
 					//delete timer
 					delTimer(timer_id);
-					setText("")
+					setText("");
 				}
 			}
 		}
@@ -799,8 +836,8 @@ class Stopwatch : public finalcut::FLabel
 		//All subsequent members will be private
 		
 		//Set some default values/declare variables:
-		bool is_running{false}								//timer defaults off
-		int timer_id{0}										//timer id of 0 (unintialized)
+		bool is_running{false};								//timer defaults off
+		int timer_id{0};									//timer id of 0 (unintialized)
 		std::chrono::steady_clock::time_point start_time;	//declare w/o value
 
 		void initLayout()
