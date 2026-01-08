@@ -1,7 +1,6 @@
 // CAMERA DEPENDENCIES
 #include "core/rpicam_encoder.hpp" 	// Contains code for encoding video w/ rpicam
 #include "output/output.hpp"  		// Contains code for outputing video to file
-#include <signal.h>					// Needed for signal handling
 #include <functional>				// Needed to use std::bind
 
 // FRONT END DEPENDENCIES
@@ -375,20 +374,12 @@ class MainDialog : public finalcut::FDialog
 				
 				
 				//Check filename for issues:
-				if (std_filename.empty() || std_filename.length() > 255)
+				if (std_filename.empty())
 				{
 					//filename has bad length
 					
 					//push error message to status:
-					status.setText("ERROR: Improper name length");
-				}
-				else if (std_filename.find_first_of("\\/:*?\"<>|") != std::string::npos)
-				{
-					//std::string::npos is result if substring not found
-					//Ergo, != indicates invalid character found
-
-					//push error message to status:
-					status.setText("ERROR: Name contains invalid characters: \\/:*?\"<>|");
+					status.setText("ERROR: No file name given");
 				}
 				else if (std_filename.substr(std_filename.length() - 4) != ".mp4")
 				{
@@ -660,6 +651,13 @@ class FileName : public finalcut::FLineEdit
 			//Defines a function for setup variables
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 
+			//finalcut::FLineEdit has built in functionality to filter inputs:
+			//restrict text to alphanumeric, spaces, spaces, dots, hyphens, underscores
+			setInputFilter("[a-zA-Z0-9 ._-]")
+
+			//set max text length
+			setMaxLength(255);
+			
 			//Get current date-time as suggested file name
 			std::string fsuggestion = filename_time();
 
@@ -697,15 +695,23 @@ class Stopwatch : public finalcut::FLabel
 			//Check if stopwatch is off
 			if (!is_running)
 			{
-				//Set running flag on
-				is_running = true;
-				
 				//Get our start time:
 				start_time = std::chrono::steady_clock::now();
 				
 				//FinalCut has built in functions for checking timers function
 				//This one tells our Stopwatch class to check every 1000ms / 1s.
 				timer_id = addTimer(1000);
+
+				//Double-check timer was created succesfully
+				if (timer_id <= 0) 	//Valid IDs > 0
+				{
+					setText("ERROR: Timer failed to start");
+				}
+				else
+				{
+					//Set running flag on
+					is_running = true;
+				}
 			}
 		}
 		
@@ -716,10 +722,14 @@ class Stopwatch : public finalcut::FLabel
 			{
 				//Set running flag off
 				is_running = false;
-				
-				//delete timer
-				delTimer(timer_id);
-				setText("");
+
+				//Double-check timer before deleting
+				if (timer_id > 0) 	//Valid IDs > 0
+				{
+					//delete timer
+					delTimer(timer_id);
+					setText("")
+				}
 			}
 		}
 
@@ -728,7 +738,7 @@ class Stopwatch : public finalcut::FLabel
 		
 		//Set some default values/declare variables:
 		bool is_running{false}								//timer defaults off
-		int timer_id{0}										//timer id of 0
+		int timer_id{0}										//timer id of 0 (unintialized)
 		std::chrono::steady_clock::time_point start_time;	//declare w/o value
 
 		void initLayout()
@@ -748,6 +758,12 @@ class Stopwatch : public finalcut::FLabel
 		void onTimer(finalcut::FTimerEvent* ev) override
 		{
 			//function takes as input a pointer to object of type FTimerEvent
+	
+			//double-check timer ID is as expected
+			if (ev->getTimerId() != timer_id)
+			{
+				return;	//uninitialized timer event-- ignore
+			}
 			
 			//Get current system clock time (not same as local datetime)
 			auto now = std::chrono::steady_clock::now();
