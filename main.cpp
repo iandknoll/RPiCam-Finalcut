@@ -1,21 +1,251 @@
-#include <final/final.h> 	//Includes the basic FinalCut library
-#include <ctime> 			//Need for current date/time
-#include <string> 			//Need to use strings
-#include <filesystem> 		//Need to check if file(s) exist
+// CAMERA DEPENDENCIES
+#include "core/rpicam_encoder.hpp" 	// Contains code for encoding video w/ rpicam
+#include "output/output.hpp"  		// Contains code for outputing video to file
+#include <signal.h>					// Needed for signal handling
+#include <functional>				// Needed to use std::bind
 
+// FRONT END DEPENDENCIES
+#include <final/final.h> 			// Includes the basic FinalCut library
+#include <ctime> 					// Need for current date/time
+#include <chrono>					// Need for stopwatch
+#include <filesystem> 				// Need to check if file(s) exist
+
+// SHARED DEPENDENCIES
+#include <string>					// Required for std::string type
+#include <atomic>					// Required for our global variable
+#include <thread>					// Required for threading
+
+
+// GLOBALS
+static std::atomic<bool> stop_camera(false);	// Declare variable for signal handling
+// In this context, "static" means variable is allocated once, for lifetime of program
+// We will run our camera on a seperate thread to the TUI (so they can operate parallel)
+// Because of this, anything both can access needs to be set as atomic--
+// In brief, this prevents other threads from seeing mid-write (garbage) states.
+// This is what we're doing here with the "std::atomic<bool>" part
+
+
+// CAMERA
+static void VidStart(std::string const& name) {
+	// Define function for running rpicam-vid
+	// "std::string const& name" passes a reference to a variable of type string as input
+	// passing by reference is faster and more memory efficient than passing by value
+	// This is because passing by value requires creating a copy of the variable
+	// BUT, using a reference means modifying the parameter WILL affect the original
+	// That said, const means the function won't have write access on the variable
+
+	try
+	{
+		// try: attempt to run the following code.
+		// If an error is detected, run the code under catch:
+
+		RPiCamEncoder app;
+		// Creates an object of the class "RPiCamEncoder" with name "app"
+		// RPiCamEncoder handles the video recording pipeline
+
+		VideoOptions *options = app.GetOptions();
+		// Creates a pointer to an object of the class "VideoOptions"
+		// app.GetOptions() is a function tied to the "RPiCamEncoder"
+		// It outputs the address of the object's (in this case "app") VideoOptions
+		// VideoOptions is a class of type struct (basically a container to group variables)
+		// Naturally, it contains the options we want to pass to the encoder
+
+		// (Side-Note: a struct differs from a class in that members are public by default)
+		// (This means that you can directly access them from outside of the struct)
+		// (In a class, members must be explicitly set as public, otherwise they're private)
+		// (The later  means they can only be accessed from outside in special circumstances)
+
+
+		options->output = name; 			// file name (here our input)
+		options->timeout = 2400000; 		// MAX Recording time (ms)
+		options->codec  = "h264";			// codec for video encoding/decoding
+		options->profile = "baseline";  	// Compression profile
+		options->framerate = 240;			// fps
+		options->width = 800;				// frame width (in pixels)
+		options->height = 800;				// frame height (in pixels)
+		options->awbgains = "2,2";			// disable automatic white balance
+		options->shutter.set("3000us");		// Shutter speed (us)
+		options->gain = 2;					// analog gain
+		options->denoise = "cdn_off"; 		// turns off color denoise (for fps)
+		options->nopreview = true;			// turns off preview (for fps)
+		// the arrow operator -> dereferences a pointer (getting the unnderlying object),
+		// then accesses the specified member of the class on the right hand side
+		// here "member" just means a variable, function, etc. defined inside a class/struct
+
+
+		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
+		// std::unique_ptr is a type of pointer that memory manages it's pointed object
+		// specifically, it will delete the object if the pointer is deleted or reassigned
+		// the name in <> is the type/class of object being pointed to (here "Output")
+		// the following variable (here "output") is in turn the pointer.
+		// On left, std::unique_ptr<Output> defines a variable of that type (think "int x")
+		// While on the right, the same text constructs an object of said type
+		// On the right, the text in () defines how said variable is getting constructed
+		// Output::Create(options) creates a pointer to an Output object based on "options"
+		// Output can be a few different types, hence the need for a method to decide which
+		// Here it's most likely a "FileOutput" type (for writing to file)
+
+		// (Sidenote #1: *Technically* a smart pointer is not a pointer itself)
+		// (Rather, it's an object that wraps a pointer and offers unique behaviour on top)
+		// (*However*, syntactically they're still able to operate as a pointer!)
+		// (They accomplish this by overloading operators like -> and *)
+
+		// (Sidenote #2: :: is a "scope resolution operator". If x::y then:)
+		// (x defines a scope-- a region of code where a variable/identifier is accessible)
+		// (Many Scopes exist, including Global or Local-- e.g. between any given set of {} )
+		// (Here, the scope is a Namespace-- which libaries use to avoid variable conflict)
+		// (y then defines an identifer-- a type, function, variable, etc. in said scope)
+		// (x::y then just lets us access identifier x in scope y)
+
+		app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), _1, _2, _3, _4));
+		// Registers callback function tied to "RPiCamEncoder" class, to handle encoded video
+		// A callback function is one that can be passed as argument to another function
+		// This one routes newly encoded frames from the encoder to an output handler
+		// The function expects four parameters:
+			// A pointer to the encoded data buffer
+			// The size of the encoded data (in bytes)
+			// The timestamp of the frame (as a 64-bit signed integer)
+			// And a flag indicating if said frame is a keyframe
+		// To give these parameters, we use std::bind, generating a "forward call wrapper"
+		// Put simply, std::bind creates a version of a function with some parameters filled
+		// Here, function is &Output::OutputReady, and output.get() is pre-defined input.
+		// "_1, _2, etc." is placeholder for the first four arguments passed to the callback
+		// That way, the # of arguments our wrapped function and callback expect are equal.
+		// OutputReady handles the encoded data, doing things like managing output state,
+		// saving timestamps/metadata (optional), & calling another function, outputBuffer(),
+		// to actually write the encoded frame to its destination (in our case, a file).
+		// Since "output" is our smart pointer, output.get() returns its raw pointer.
+
+		// So one last time, in plain English. this line of code is saying:
+		// "When an encoded frame is ready, respond by processing it with OutputReady,
+		// using output.get()-- which tells it which method to use to route/write data--
+		// and the four afformentioned frame parameters as inputs."
+
+		app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(), _1));
+		// Roughly the same idea as the prior line of code, only handling metadata--
+		// things like exposure, gain values, white balance, etc.
+		// Here the only expected paramater is an object of class libcamera::ControlList,
+		// Which contains the metadata for the frame.
+
+
+		app.OpenCamera();
+		// Lots of heavy lifting being done by this one line in the background!
+		// For our sake, you just need to know that this selects our desired camera by index
+		// (here defaulting to 0) and sets it up to be exclusively handled by this script
+
+		app.ConfigureVideo(get_colourspace_flags(options->codec));
+		// Configures our video stream, telling our codec how to process the raw sensor data
+		// based on the colourspace inherent to the type of codec we are using.
+		// (More configuration going on in the background as well-- configuring buffer count,
+		// setting resolution, configuring denoise, etc.-- the whole video pipeline!)
+
+		app.StartEncoder();
+		// Starts and configures our encoder, which asynchronously processes video frames
+		// while our video stream continues collection. As usual, lot going on in the
+		// background here (like setting up encoder callbacks)
+
+		app.StartCamera();
+		// Begins camera hardware (w/ our configured controls), and start capturing frames!
+
+		auto start_time = std::chrono::high_resolution_clock::now();
+		// Gets the current time (in high resolution) and assigns it to variable start_time
+		// auto just tells compiler to pick an appropriate type based on variable's input
+
+		for (;;)  // Create infinite loop by passing no parameters to for loop
+		{
+			RPiCamEncoder::Msg msg = app.Wait();
+			// Wait for camera to delver message, then save to struct "msg" of type Msg
+			// Camera can basically send one of the three messages::
+				// RequestComplete -- a frame is ready for processing
+				// Timeout -- Camera hardware timeout, need to restart camera
+				// Quit -- Request to end application/loop
+
+			if (msg.type == RPiCamApp::MsgType::Quit)  // Quit received
+			{
+				break;	// End loop early
+				// Unlike the next if statement, we don't stop the camera/encoder here
+				// Reason is we can't be sure what state they're in when receiving a quit
+				// So it's better to leave handling them up to other built-in processes
+			}
+
+			auto now = std::chrono::high_resolution_clock::now();	// Get current time
+			if ((now - start_time) > options->timeout.value)	// If elapsed time > timeout
+			{
+				app.StopCamera();	// Stop camera hardware
+				app.StopEncoder();	// Stop encoder pipeline
+				break;				// End loop early
+			}
+
+			if (stop_camera.load()) // If the user send a shutdown signal
+			{
+				//Note: .load() is the how you read an atomic variable
+				
+				app.StopCamera();	// Stop camera hardware
+				app.StopEncoder();	// Stop encoder pipeline
+				break;				// End loop early				
+			}
+			
+			CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
+			// Creates a reference variable of type CompletedRequestPtr
+			// CompleteRequestPtr is itself a type of smart pointer: a shared_ptr
+			// For our purposes, main difference from unique_ptr is you can have multiple
+			// shared_ptr responsible for memory managemement of the referenced object.
+			// On the right, we define that reference as the contents of msg.payload--
+			// That is, the frame data associated with a given message
+			// We need std::get<CompletedRequestPtr> as msg.payload is of type "Payload"
+			// Which is a type alias of std::variant<CompletedRequestPtr>, itself a "variant"
+			// A variant is a "type safe union that can hold one of several types at a time"
+			// std::get<CompletedRequestPtr> extracts the variable of type CompleteRequestPtr
+			// Put VERY simply: This is the line that gets our actual framedata!
+
+			// (Note: completed_request must be reference due to the nature of shared_ptrs)
+			// (If it wasn't, both sides of the expression would each create a shared_ptr)
+			// (Then, we'd have to worry about both to destory the underlying variable!)
+			// (And of course, having to allocate the extra memory would be less efficient)
+
+			app.EncoderBuffer(completed_request, app.VideoStream());
+			// Take our frame data (completed_request) and give to app method EncoderBuffer
+			// Send it alongside app.VideoStream(), containing encoder settings/methods
+  		}
+	}
+	catch (std::exception const &e)
+	{
+		// If an error is detected during try, run the followingm using "e" as input
+		// e is a constant reference, of type std::exception-- standard class for C++ errors
+		// Simply put, it's the corresponding error message for whatever failed in try.
+
+		LOG_ERROR("ERROR: *** " << e.what() << " ***");
+		// Use LOG_ERROR() macro to send error to log/terminal (depending on how code is run)
+		// e.what() is a method for type std::exception to outputs error as a string pointer
+
+		// (Note: A macro is a placeholder for preprocessor to replace before compilation)
+		// (A macro can be an object/variable, function (as here), or conditional)
+		// (It speed up development by reusing code w/o function calls or explicit rewrites)
+
+		return -1;
+		// If an error occured, end script w/ a return code of -1, indicating error/failure
+	}
+	return 0;
+	// If we get through entire script w/o error, end with return code 0, indicating success!
+}
+
+
+
+// FRONT END
 auto filename_time() -> std::string
 {
 	//Function to get current date-time as character array
 
 	//Get current time as timestamp object
 	std::time_t timestamp = std::time(NULL);
-
-	//Convert timestamp into a datetime struct (aka std::tm)
-	//The * before localtime is a dereference operator--
-	//localtime returns a pointer-- * gives the object it points to
-	//Similarly, & before timestamp is a address-of operator
-	//localtime wants a pointer for input-- & gives a pointer for an object
-	std::tm datetime = *(std::localtime(&timestamp));
+	
+	//declare a datetime struct (std::tm)
+	std::tm datetime;
+	
+	//Convert our timestamp into std::tm, and assign to datetime
+	//& before timestamp and datetime is a address-of operator
+	//localtime_r wants a pointer for input-- & gives a pointer for an object
+	localtime_r(&timestamp, &datetime);
 
 	//Allocate space for our string
 	char output[80];
@@ -77,12 +307,21 @@ class MainDialog : public finalcut::FDialog
 		ConfirmButton confirmbutton{this};	//Main button
 		YesButton yesbutton{this};			//Yes button
 		NoButton nobutton{this};			//No button
-		Timer status{this};					//Timer/info
+		Stopwatch status{this};				//Stopwatch/info
 		//Widgets (and their functionality) are initalized here, in the parent--
 		//This makes handling inter-widget interaction easier
 		
 		//Define a boolean to handle what button set is currently visible:
 		bool showYesNo{false};
+		
+		//Declare variable for input text so it'll be in all subsequent functions' scope
+		std::string suggestion = "";
+		
+		//Declare the filename variable so it'll be in all subsequent functions' scope
+		std::string std_filename;
+		
+		//Declare the camera's thread variable so it'll be in all subequent functions' scope
+		std::thread camera_thread;
 		
 		void initLayout()
 		{
@@ -90,7 +329,7 @@ class MainDialog : public finalcut::FDialog
 			setText ("Reaching Task Camera Control");
 			setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});	//x,y w,h
 
-			//Run the inheritted classes initLayout (no effect, but good practice)
+			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FDialog::initLayout();
 		}
 		
@@ -121,11 +360,9 @@ class MainDialog : public finalcut::FDialog
 		void cb_cbutton()
 		{
 			//Function for handling what happens when we press our button
-			//As input, we take a reference to a "FileName" object
-			//This enables us to use the current text of it in callback
 
 			//Check button state:
-			if (filebutton.getText() == "Start Video")
+			if (confirmbutton.getText() == "Start Video")
 			{
 				//Our click indicates we want to start recording
 
@@ -133,8 +370,8 @@ class MainDialog : public finalcut::FDialog
 				auto filename = input.getText();
 				
 				//By default, filename will be of FString type--
-				//For validation, we need it to be std::string, so convert:
-				std::string std_filename = filename.toString();
+				//For our usage, we need it to be std::string, so convert:
+				std_filename = filename.toString();
 				
 				
 				//Check filename for issues:
@@ -143,7 +380,7 @@ class MainDialog : public finalcut::FDialog
 					//filename has bad length
 					
 					//push error message to status:
-					status.setText("ERROR: Improper name length")
+					status.setText("ERROR: Improper name length");
 				}
 				else if (std_filename.find_first_of("\\/:*?\"<>|") != std::string::npos)
 				{
@@ -151,38 +388,135 @@ class MainDialog : public finalcut::FDialog
 					//Ergo, != indicates invalid character found
 
 					//push error message to status:
-					status.setText("ERROR: Name contains invalid characters: \\/:*?\"<>|")
+					status.setText("ERROR: Name contains invalid characters: \\/:*?\"<>|");
 				}
-				else if (!std_filename.ends_with(".mp4"))
+				else if (std_filename.substr(std_filename.length() - 4) != ".mp4")
 				{
 					//file does not have proper file extension
-					//ALSO NOTE: THIS IS C++ 20 FUNCTIONALITY
-					//It may not work depending on compilation
+					//.substr() gives a substring of the string it is applied to
+					//It takes as it's first input a starting index, then goes to end
+					//.length() naturally gives the length of our string
+					//so by subtracting four, we get last four characters of the string
 					
 					//push error message to status:
-					status.setText("ERROR: File must have .mp4 extension")
+					status.setText("ERROR: File must have .mp4 extension");
 				}
 				else if (std::filesystem::exists(std_filename))
 				{
 					//file already exist
-					//note that unlike priors, this won't neccesarily end function
 					
 					//push warning to status
-					status.setText("WARNING: File already exists. Overwrite?")
+					status.setText("WARNING: File already exists. Overwrite?");
+					
+					//Set flag to swap buttons on redraw
+					showYesNo = true;
 				}
 				else
 				{
 					//no further errors: we can start recording!
+					//Handle it as a function so "Yes" can also call it
+					StartProtocol();
 				}
 			}
 			else
 			{
-				//Our click indicates want to stop recording
+				//Our click indicates we want to stop recording
+				StopProtocol();
 			}
-
-			//Change text of  button
-			filebutton.setText("&Stop Video");
 			
+			//Regardless of above, perform updates:
+			updateButtonVisibility();
+			updateScreen();
+		}
+		
+		void cb_ybutton()
+		{
+			//Function for handling what happens when we press our button
+			
+			//Return to main button visibility:
+			showYesNo = false;
+			
+			//Start camera/stopwatch protocols:
+			StartProtocol();
+			
+			//Perform updates:
+			updateButtonVisibility();
+			updateScreen();
+		}
+		
+		void cb_nbutton()
+		{
+			//Function for handling what happens when we press our button
+			
+			//Return to default state:			
+			showYesNo = false;
+			status.setText("");
+			
+			//Perform updates
+			updateButtonVisibility();
+			updateScreen();		
+		}
+		
+		void StartProtocol()
+		{
+			//begin camera
+			//std::thread is the class for a C++ thread
+			//camera_thread is thus our thread object, and the code in its () its content
+			//The syntax for a thread object here is a function, then arguments to pass it
+			//Were saying "run function VidStart w/ argument std_filename in your thread"
+			//Conversly, std::thread camera_thread(VidStart(std_filename)) *wouldn't* work
+			//That syntax results in running our camera function in the *current* thread
+			//Then passing the result-- nothing-- as the function to run in the thread
+			camera_thread = std::thread(VidStart, std_filename);
+			//Side-Note: variable type, then variable name is for local variables
+			//variable name = variable_type() is for pre-defined variables
+
+			//start stopwatch
+			status.start();
+			
+			//Change main button text to indicate changed functionality:
+			confirmbutton.setText("Stop Video");
+		}
+		
+		void StopProtocol()
+		{
+			//set stop camera flag-- .store() is write method for atomic variables
+			stop_camera.store(true);
+			
+			//make sure camera thread has ended before continuing
+			camera_thread.join();
+			
+			//reset stopwatch
+			status.stop();
+			
+			//change status text to reflect succesfull operation
+			status.setText(finalcut::FString("Video saved as: ") 
+						   << finalcut::FString(suggestion));
+			
+			//Get current date-time as suggested file name
+			suggestion = filename_time();
+			
+			//set new suggested file name:
+			input.setText (finalcut::FString {suggestion});	//Need to convert type(?)
+			
+			//Change main button text to indicate changed functionality:
+			confirmbutton.setText("Start Video");
+			
+			//now that we're all done, set flag to allow another recording:
+			stop_camera.store(false);
+		}
+		
+		void updateButtonVisibility()
+		{
+			confirmbutton.setVisible(!showYesNo)	//confirm button visible if Y/N isn't
+			yesbutton.setVisible(showYesNo)			//yes button visible if flag tripped
+			nobutton.setVisible(showYesNo)			//no button visible if flag tripped
+			
+			//Could set focus, but since we're using clicks I don't think its needed?
+		}
+		
+		void updateScreen()
+		{
 			//To update the screen based on our changes:
 			//First, we get a pointer to the parent widget using getParent()
 			//Initially, the pointer is type FWidget*, but we need FDialog*
@@ -202,15 +536,6 @@ class MainDialog : public finalcut::FDialog
 				//Side-Note 2: In C++, one-line if statements do NOT require {}
 				//For consistency, safety, and familarity, I always include them
 			}
-		}
-		
-		void updateButtonVisibility()
-		{
-			confirmbutton.setVisible(!showYesNo)	//confirm button visible if Y/N isn't
-			yesbutton.setVisible(showYesNo)			//yes button visible if flag tripped
-			nobutton.setVisible(showYesNo)			//no button visible if flag tripped
-			
-			//Could set focus, but since we're using clicks I don't think its needed?
 		}
 };
 
@@ -241,7 +566,7 @@ class ConfirmButton : public finalcut::FButton
 			setText ("Start Video");
 			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{20,1});
 
-			//Run the inheritted classes initLayout (no effect, but good practice)
+			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FButton::initLayout();
 		}
 };
@@ -273,7 +598,7 @@ class YesButton : public finalcut::FButton
 			setText ("Yes");
 			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{8,1});
 
-			//Run the inheritted classes initLayout (no effect, but good practice)
+			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FButton::initLayout();
 		}
 };
@@ -305,7 +630,7 @@ class NoButton : public finalcut::FButton
 			setText ("No");
 			setGeometry(finalcut::FPoint{32,7}, finalcut::FSize{8,1});
 
-			//Run the inheritted classes initLayout (no effect, but good practice)
+			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FButton::initLayout();
 		}
 };
@@ -336,13 +661,13 @@ class FileName : public finalcut::FLineEdit
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 
 			//Get current date-time as suggested file name
-			std::string suggestion = filename_time();
+			std::string fsuggestion = filename_time();
 
-			setText (finalcut::FString{suggestion});	//Need to convert type
+			setText (finalcut::FString{fsuggestion});	//Need to convert type(?)
 			setGeometry (finalcut::FPoint{14,2}, finalcut::FSize{30,1});
 			setLabelText("File Name: ");
 
-			//Run the inheritted classes initLayout (no effect, but good practice)
+			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FLineEdit::initLayout();
 			
 			//NOTE TO SELF: We can impose restrictions on the input--
@@ -350,14 +675,14 @@ class FileName : public finalcut::FLineEdit
 		}
 };
 
-class Timer : public finalcut::FLabel
+class Stopwatch : public finalcut::FLabel
 {
-	//Defining a new class to handle our timer (or lack thereof)
+	//Defining a new class to handle our stopwatch (or lack thereof)
 
 	public:
 		//All subsequent members will be public
 
-		explicit Timer (finalcut::FWidget* parent = nullptr)
+		explicit Stopwatch (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FLabel{parent}
 		{
 			//Constructor, as previously discussed
@@ -365,20 +690,104 @@ class Timer : public finalcut::FLabel
 			//Setup function(s) (defined further down)
 			initLayout();
 		}
+		
+		//Stopwatch functions will need to be public so the main protocol can access:
+		void start()
+		{
+			//Check if stopwatch is off
+			if (!is_running)
+			{
+				//Set running flag on
+				is_running = true;
+				
+				//Get our start time:
+				start_time = std::chrono::steady_clock::now();
+				
+				//FinalCut has built in functions for checking timers function
+				//This one tells our Stopwatch class to check every 1000ms / 1s.
+				timer_id = addTimer(1000);
+			}
+		}
+		
+		void stop()
+		{
+			//Checks if stopwatch is on
+			if (is_running)
+			{
+				//Set running flag off
+				is_running = false;
+				
+				//delete timer
+				delTimer(timer_id);
+				setText("");
+			}
+		}
 
 	private:
 		//All subsequent members will be private
+		
+		//Set some default values/declare variables:
+		bool is_running{false}								//timer defaults off
+		int timer_id{0}										//timer id of 0
+		std::chrono::steady_clock::time_point start_time;	//declare w/o value
 
 		void initLayout()
 		{
 			//Defines a function for setup variables
 			//(Here FPoint is relative to parent dialog) (x,y w,h)
 
-			setText("[]");
+			setText("");  //No default message
 			setGeometry(finalcut::FPoint{20,9}, finalcut::FSize{40,1});
 
-			//Run the inheritted classes initLayout (no effect, but good practice)
+			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FLabel::initLayout();
+		}
+		
+		//FWidgets all have in-built function for reacting once timer event occurs
+		//To take advantage of this, we must override the function to redefine it:
+		void onTimer(finalcut::FTimerEvent* ev) override
+		{
+			//function takes as input a pointer to object of type FTimerEvent
+			
+			//Get current system clock time (not same as local datetime)
+			auto now = std::chrono::steady_clock::now();
+			
+			//Get elapsed time as function of current time and start time
+			auto elapsed = now - start_time;
+			
+			//Convert elapsed time units to seconds (for easier string setup)
+			//duration_cast is a function built in to chrono library for this purpose
+			//we tell it our desired format (std::chrono::seconds) and give input (elapsed)
+			auto total_seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed);
+			
+			//Get total minutes into current hour:
+			//.count() extracts the raw numeric value from our object, 
+			//% gives remainder after division (here after dividing after sec in 1 hr)
+			int minutes = (total_seconds.count() % 3600) / 60;
+			//technically the % 3600 part is just good/safe practice here--
+			//I intend to have a failsafe to videos can't run that long
+			
+			//Get total seconds into current minute:
+			int seconds = total_seconds.count() % 60;
+			
+			//Create our new label with this information:
+			//First, we create an initial object of type finalcut::FString--
+			//Elsewhere setText() can perform implicit conversion from char/string,
+			//but here we want finalcut::FString for its special formatting abilities:
+			//.setWidth() for padding numbers (here to always be display w/ two digits),
+			//and <<, which lets us append the int/string to our finalcut::FString object
+			setText(finalcut::FString("Video Length:")
+					.setWidth(2) << minutes << ":"
+					.setWidth(2) << seconds);
+			//Side-Note: The use of "<<" here is an example of an overloaded operator:
+			//A C++ feature that lets us redefine what an operator does to an object type.
+			//Normally, << should perform a bitwise left shift (which I won't explain here)
+			//finalcut::FString is written to reuse that operator for appending instead
+			
+			//Now redraw the label with this new info:
+			//Normally, we let the parent box redraw everything at once for convienence
+			//Here it makes more sense to let the label redraw itself (and only itself)
+			redraw();
 		}
 };
 
