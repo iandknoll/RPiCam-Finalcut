@@ -1,5 +1,6 @@
 // CAMERA DEPENDENCIES
 #include "core/rpicam_encoder.hpp" 	// Contains code for encoding video w/ rpicam
+#include "core/logging.hpp"			// Contains code for the logginc macro used
 #include "output/output.hpp"  		// Contains code for outputing video to file
 #include <functional>				// Needed to use std::bind
 
@@ -33,6 +34,19 @@ enum class StopType {
 
 
 // CAMERA
+static int get_colourspace_flags(std::string const &codec) {
+	//Function for handling encoder colour space
+	//Copied from rpicam_vid.cpp-- it being static there means we can't reference it
+	if (codec == "mjpeg" || codec == "yuv420") {
+		//if codec uses a jpeg colorspace...
+		return RPiCamEncoder::FLAG_VIDEO_JPEG_COLOURSPACE; //return with such
+	}
+	else {
+		return RPiCamEncoder::FLAG_VIDEO_NONE; //otherwise, nothing needed(?)
+	}
+}
+
+
 static StopType VidStart(std::string const& name) {
 	// Define function for running rpicam-vid
 	// static means the function can't be called outside this source file
@@ -65,18 +79,18 @@ static StopType VidStart(std::string const& name) {
 		// (The later  means they can only be accessed from outside in special circumstances)
 
 
-		options->output = name; 			// file name (here our input)
-		options->timeout = 2400000; 		// MAX Recording time (ms)
-		options->codec  = "h264";			// codec for video encoding/decoding
-		options->profile = "baseline";  	// Compression profile
-		options->framerate = 240;			// fps
-		options->width = 800;				// frame width (in pixels)
-		options->height = 800;				// frame height (in pixels)
-		options->awbgains = "2,2";			// disable automatic white balance
-		options->shutter.set("3000us");		// Shutter speed (us)
-		options->gain = 2;					// analog gain
-		options->denoise = "cdn_off"; 		// turns off color denoise (for fps)
-		options->nopreview = true;			// turns off preview (for fps)
+		options->output = name; 				// file name (here our input)
+		options->timeout.set("40min"); 		// MAX Recording time
+		options->codec  = "h264";				// codec for video encoding/decoding
+		options->profile = "baseline";  		// Compression profile
+		options->framerate = 240;				// fps
+		options->width = 800;					// frame width (in pixels)
+		options->height = 800;					// frame height (in pixels)
+		options->awbgains = "2,2";				// disable automatic white balance
+		options->shutter.set("3000us");			// Shutter speed (us)
+		options->gain = 2;						// analog gain
+		options->denoise = "cdn_off"; 			// turns off color denoise (for fps)
+		options->nopreview = true;				// turns off preview (for fps)
 		// the arrow operator -> dereferences a pointer (getting the unnderlying object),
 		// then accesses the specified member of the class on the right hand side
 		// here "member" just means a variable, function, etc. defined inside a class/struct
@@ -171,10 +185,24 @@ static StopType VidStart(std::string const& name) {
 
 			if (msg.type == RPiCamApp::MsgType::Quit)  // Quit received
 			{
-				return StopType::USER_STOP;	// End loop early, user as reason
+				return StopType::USER;	// End loop early, user as reason
 				// Unlike the next if statement, we don't stop the camera/encoder here
 				// Reason is we can't be sure what state they're in when receiving a quit
 				// So it's better to leave handling them up to other built-in processes
+			}
+			else if (msg.type == RPiCamApp::MsgType::Timeout) // Camera timed out
+			{
+				LOG_ERROR("ERROR: Device timeout detected, attempting restart!);
+				// Log the issue in terminal/log file (depending on how program ran)
+
+				app.StopCamera();
+				app.StartCamera();
+				// Cycle the camera
+				// Note: cycling camera like this could *technically* lead to minor data loss
+				// That said, it'd be super minor, and timeouts like this are rare
+				// This is the exact method rpicam_vid.cpp uses, so its good enough for me!
+				
+				continue;
 			}
 
 			auto now = std::chrono::high_resolution_clock::now();	// Get current time
@@ -191,7 +219,7 @@ static StopType VidStart(std::string const& name) {
 				
 				app.StopCamera();	// Stop camera hardware
 				app.StopEncoder();	// Stop encoder pipeline
-				return StopType::USER_STOP;	// End loop early, user as reason
+				return StopType::USER;	// End loop early, user as reason
 			}
 			
 			CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
@@ -500,18 +528,23 @@ class MainDialog : public finalcut::FDialog
 			StopType reason = last_stop_reason_.load();
 
 			//change status text based on stop reason:
-			switch (reason) {
+			switch (reason)
+			{
 				case StopType::USER:
 					//change status text to reflect succesful operation
 					status.setText(finalcut::FString("Video saved as: ") 
 								   << finalcut::FString(suggestion));
+					break;	//exit switch
 				case StopType::TIMEOUT:
 					//change status text to reflect timeout
 					status.setText(finalcut::FString("MAX DURATION REACHED. Video saved as: ") 
 								   << finalcut::FString(suggestion));
+					break;	//exit switch
 				case StopType::ERROR:
 					//change status text to reflect video error
-					status.setText(finalcut::FString("ERROR: Recording failed")
+					status.setText(finalcut::FString("ERROR: Recording failed");
+					break;	//exit switch
+			}
 						
 			//Get current date-time as suggested file name
 			suggestion = filename_time();
@@ -682,7 +715,7 @@ class FileName : public finalcut::FLineEdit
 
 			//finalcut::FLineEdit has built in functionality to filter inputs:
 			//restrict text to alphanumeric, spaces, spaces, dots, hyphens, underscores
-			setInputFilter("[a-zA-Z0-9 ._-]")
+			setInputFilter("[a-zA-Z0-9 ._-]");
 
 			//set max text length
 			setMaxLength(255);
