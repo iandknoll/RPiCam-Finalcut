@@ -56,11 +56,12 @@ static int get_colourspace_flags(std::string const &codec) {
 static StopType VidStart(std::string const& name) {
 	// Define function for running rpicam-vid
 	// static means the function can't be called outside this source file
-	// StopType is the expected type of any return variable (defined below)
+	// StopType is the expected type of any return variable (defined later)
 	// "std::string const& name" passes a reference to a variable of type string as input
 	// passing by reference is faster and more memory efficient than passing by value
 	// This is because passing by value requires creating a copy of the variable
 	// BUT, using a reference means modifying the parameter WILL affect the original
+	// (A reference is just another variable name for the same object in memory)
 	// That said, const means the function won't have write access on the variable
 
 	bool EncoderOn{false};
@@ -79,19 +80,24 @@ static StopType VidStart(std::string const& name) {
 
 		VideoOptions *options = app.GetOptions();
 		// Creates a pointer to an object of the class "VideoOptions"
+		// A pointer stores the memory location of an object (rather than object itself)
 		// app.GetOptions() is a function tied to the "RPiCamEncoder"
 		// It outputs the address of the object's (in this case "app") VideoOptions
 		// VideoOptions is a class of type struct (basically a container to group variables)
 		// Naturally, it contains the options we want to pass to the encoder
 
-		// (Side-Note: a struct differs from a class in that members are public by default)
+		// (Side-Note 1: All standard pointers are 2 byte, unsigned integers)
+		// (That said you need to specify the type of the uderlying object when definining)
+		// (The reason is we need to know how much data to read when dereferencing the pointer)
+		
+		// (Side-Note 2: a struct differs from a class in that members are public by default)
 		// (This means that you can directly access them from outside of the struct)
 		// (In a class, members must be explicitly set as public, otherwise they're private)
 		// (The later  means they can only be accessed from outside in special circumstances)
 
 		// Adjust these values according to your own needs:
 		options->output = name; 				// file name (here our input)
-		options->timeout.set("40min"); 		// MAX Recording time
+		options->timeout.set("40min"); 			// MAX Recording time
 		options->codec  = "h264";				// codec for video encoding/decoding
 		options->profile = "baseline";  		// Compression profile
 		options->framerate = 240;				// fps
@@ -103,7 +109,7 @@ static StopType VidStart(std::string const& name) {
 		options->denoise = "cdn_off"; 			// turns off color denoise (for fps)
 		options->nopreview = true;				// turns off preview (for fps)
 		// the arrow operator -> dereferences a pointer (getting the unnderlying object),
-		// then accesses the specified member of the class on the right hand side
+		// then accesses the specified member of the class on the right hand side of arrow
 		// here "member" just means a variable, function, etc. defined inside a class/struct
 
 
@@ -607,390 +613,381 @@ class MainDialog : public finalcut::FDialog
 			if (camera_thread.joinable()) {
 				// check if camera_thread is able to be closed:
 				
-				//set stop camera flag-- .store() is write method for atomic variables
 				stop_camera.store(true);
+				// set stop camera flag-- .store() is write method for atomic variables
 
-				//set temporary status text so user knows we're mid-process
 				status.setText(finalcut::FString("Stopping..."));
+				// set temporary status text so user knows we're mid-process
 
-				//redraw to reflect status text:
 				status.redraw();
-				
-				//make sure camera thread has ended before continuing
+				// redraw to reflect status text:
+			
 				camera_thread.join();
-
-				//reset the thread (so it can be properly reused)
-				camera_thread = std::thread();
+				// make sure camera thread has ended before continuing
 				
-				//reset stopwatch
+				camera_thread = std::thread();
+				// reset the thread (so it can be properly reused)
+				
 				status.stop();
+				// reset stopwatch
 	
-				//get the stop reason:
 				StopType reason = last_stop_reason_.load();
+				// get the stop reason:
 	
-				//change status text based on stop reason:
+				// change status text based on stop reason:
 				switch (reason)
 				{
-					case StopType::USER:
-						//change status text to reflect succesful operation
+					case StopType::USER: // succesful operation
 						status.setText(finalcut::FString("Video saved as: ") 
 									   << finalcut::FString(std_filename));
-						break;	//exit switch
-					case StopType::TIMEOUT:
-						//change status text to reflect timeout
+						break;	// exit switch
+					case StopType::TIMEOUT: // timeout
 						status.setText(finalcut::FString("MAX DURATION REACHED. Video saved as: ") 
 									   << finalcut::FString(std_filename));
-						break;	//exit switch
-					case StopType::ERROR:
-						//change status text to reflect video error
+						break;	// exit switch
+					case StopType::ERROR: // video error
 						status.setText(finalcut::FString("ERROR: Recording failed"));
-						break;	//exit switch
-					default:	//catch-all
-						//change status text to reflect unknown error
+						break;	// exit switch
+					default:	// unknown error (catch all)
 						status.setText(finalcut::FString("ERROR: Unknown stop reason"));
-						break;	//exit switch
+						break;	// exit switch
 				}
 							
-				//Get current date-time as suggested file name
 				suggestion = filename_time();
+				// Get current date-time as suggested file name
 				
-				//set new suggested file name:
 				input.setText (finalcut::FString {suggestion});	//Need to convert type(?)
+				// set new suggested file name:
 				
-				//Change main button text to indicate changed functionality:
 				confirmbutton.setText("Start Video");
+				// Change main button text to indicate changed functionality:
 				
-				//now that we're all done, set flag to allow another recording:
 				stop_camera.store(false);
+				// now that we're all done, set flag to allow another recording:
 			}
 		}
 		
 		void updateButtonVisibility()
 		{
-			confirmbutton.setVisible(!showYesNo);	//confirm button visible if Y/N isn't
-			yesbutton.setVisible(showYesNo);		//yes button visible if flag tripped
-			nobutton.setVisible(showYesNo);			//no button visible if flag tripped
+			confirmbutton.setVisible(!showYesNo);	// confirm button visible if Y/N isn't
+			yesbutton.setVisible(showYesNo);		// yes button visible if flag tripped
+			nobutton.setVisible(showYesNo);			// no button visible if flag tripped
 			
-			//Could set focus, but since we're using clicks I don't think its needed?
+			// Could set focus, but since we're using clicks I don't think its needed?
 		}
 		
 		void updateScreen()
 		{
-			//To update the screen based on our changes:
-			//First, we get a pointer to the parent widget using getParent()
-			//Initially, the pointer is type FWidget*, but we need FDialog*
-			//This is accomplished via static_cast<finalcut::FDialog*>
-			//Finally, we store that pointer as parent_dialog--
-			//Using auto to allow the compiller to deduce the correct type
+			// update the screen based on our changes:
+			
 			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
+			// First, we get a pointer to the parent widget using getParent()
+			// Initially, the pointer is type FWidget*, but we need FDialog*
+			// This is accomplished via static_cast<finalcut::FDialog*>
+			// Finally, we store that pointer as parent_dialog--
+			// Using auto to allow the compiller to deduce the correct type			
 
-			//Null pointers evaluate as false, so check we got pointer succesfully
+			// Null pointers evaluate as false, so check we got pointer succesfully:
 			if(parent_dialog)
 			{
-				//If so, use that pointer to redraw the parent dialog
 				parent_dialog->redraw();
-				//Side-Note 1: When trying to access a class method:
-				//"->" is for pointers, while "." is for objects
+				// If so, use that pointer to redraw the parent dialog
+				
+				// Side-Note 1: When trying to access a class method:
+				// "->" is for pointers, while "." is for objects
 
-				//Side-Note 2: In C++, one-line if statements do NOT require {}
-				//For consistency, safety, and familarity, I always include them
+				// Side-Note 2: In C++, one-line if statements do NOT require {}
+				// For consistency, safety, and familarity, I always include them
 			}
 		}
 };
 
 class ConfirmButton : public finalcut::FButton
 {
-	//Defining a new class to handle our main button
-	//It will inherit properties from the "finalcut::FButton" class
+	// Defining a new class to handle our main button
+	// It will inherit properties from the "finalcut::FButton" class
 
 	public:
-		//All subsequent members will be public
+		// All subsequent members will be public
 
 		explicit ConfirmButton (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FButton{parent}
 		{
-			//Constructor, as previously discussed
-
-			//Setup function(s) (defined further down)
+			// Setup function(s) (defined further down):
 			initLayout();
 		}
 
 	private:
-		//All subsequent members will be private
+		// All subsequent members will be private
 
 		void initLayout()
 		{
-			//Defines a function for setup variables
-			//(Here FPoint is relative to parent dialog) (x,y w,h)
+			// Defines a function for setup variables
+			
 			setText ("Start Video");
 			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{20,1});
+			// (Here FPoint is relative to parent dialog) (x,y w,h)			
 
-			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FButton::initLayout();
+			// Run the inheritted class's initLayout (no effect, but good practice)
 		}
 };
 
 class YesButton : public finalcut::FButton
 {
-	//Defining a new class to handle our yes button
-	//It will inherit properties from the "finalcut::FButton" class
+	// Defining a new class to handle our yes button
+	// It will inherit properties from the "finalcut::FButton" class
 
 	public:
-		//All subsequent members will be public
+		// All subsequent members will be public
 
 		explicit YesButton (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FButton{parent}
 		{
-			//Constructor, as previously discussed
-
-			//Setup function(s) (defined further down)
+			// Setup function(s) (defined further down):
 			initLayout();
 		}
 
 	private:
-		//All subsequent members will be private
+		// All subsequent members will be private
 
 		void initLayout()
 		{
-			//Defines a function for setup variables
-			//(Here FPoint is relative to parent dialog) (x,y w,h)
+			// Defines a function for setup variables
+			
 			setText ("Yes");
 			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{8,1});
-
-			//Run the inheritted class's initLayout (no effect, but good practice)
+			// (Here FPoint is relative to parent dialog) (x,y w,h)
+			
 			finalcut::FButton::initLayout();
+			// Run the inheritted class's initLayout (no effect, but good practice)			
 		}
 };
 
 class NoButton : public finalcut::FButton
 {
-	//Defining a new class to handle our no button
-	//It will inherit properties from the "finalcut::FButton" class
+	// Defining a new class to handle our no button
+	// It will inherit properties from the "finalcut::FButton" class
 
 	public:
-		//All subsequent members will be public
+		// All subsequent members will be public
 
 		explicit NoButton (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FButton{parent}
 		{
-			//Constructor, as previously discussed
-
-			//Setup function(s) (defined further down)
+			// Setup function(s) (defined further down)
 			initLayout();
 		}
 
 	private:
-		//All subsequent members will be private
+		// All subsequent members will be private
 
 		void initLayout()
 		{
-			//Defines a function for setup variables
-			//(Here FPoint is relative to parent dialog) (x,y w,h)
+			// Defines a function for setup variables
 			setText ("No");
 			setGeometry(finalcut::FPoint{32,7}, finalcut::FSize{8,1});
+			// (Here FPoint is relative to parent dialog) (x,y w,h)
 
-			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FButton::initLayout();
+			// Run the inheritted class's initLayout (no effect, but good practice)			
 		}
 };
 
 class FileName : public finalcut::FLineEdit
 {
-	//Defining a new class to handle our filename input
-	//It will inherit properties from the "finalcut:FlineEdit" class
+	// Defining a new class to handle our filename input
+	// It will inherit properties from the "finalcut:FlineEdit" class
 
 	public:
-		//All subequent members will be public
+		// All subequent members will be public
 
 		explicit FileName (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FLineEdit{parent}
 		{
-			//Constructor, as previously discussed
-
-			//Setup function(s) (defined further down)
+			// Setup function(s) (defined further down)
 			initLayout();
 		}
 
 	private:
-		//All subsequent members will be private
+		// All subsequent members will be private
 
 		void initLayout()
 		{
-			//Defines a function for setup variables
-			//(Here FPoint is relative to parent dialog) (x,y w,h)
+			// Defines a function for setup variables
 
-			//finalcut::FLineEdit has built in functionality to filter inputs:
-			//restrict text to alphanumeric, spaces, spaces, dots, hyphens, underscores
 			setInputFilter("[a-zA-Z0-9 ._-]");
-
-			//set max text length
+			// finalcut::FLineEdit has built in functionality to filter inputs:
+			// restrict text to alphanumeric, spaces, spaces, dots, hyphens, underscores
+			
 			setMaxLength(255);
+			// set max text length
 			
-			//Get current date-time as suggested file name
 			std::string fsuggestion = filename_time();
+			// Get current date-time as suggested file name
 
-			setText (finalcut::FString{fsuggestion});	//Need to convert type(?)
+			setText (finalcut::FString{fsuggestion});	// Need to convert type(?)
 			setGeometry (finalcut::FPoint{14,2}, finalcut::FSize{30,1});
-			setLabelText("File Name: ");
-
-			//Run the inheritted class's initLayout (no effect, but good practice)
-			finalcut::FLineEdit::initLayout();
+			// (Here FPoint is relative to parent dialog) (x,y w,h)
 			
-			//NOTE TO SELF: We can impose restrictions on the input--
-			//This would probably be good to prevent invalid filename characters
+			setLabelText("File Name: ");
+			// Set LabelText (to appear left of input area)
+
+			finalcut::FLineEdit::initLayout();
+			// Run the inheritted class's initLayout (no effect, but good practice)
 		}
 };
 
 class Stopwatch : public finalcut::FLabel
 {
-	//Defining a new class to handle our stopwatch (or lack thereof)
+	// Defining a new class to handle our stopwatch (or lack thereof)
 
 	public:
-		//All subsequent members will be public
+		// All subsequent members will be public
 
 		explicit Stopwatch (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FLabel{parent}
 		{
-			//Constructor, as previously discussed
-
-			//Setup function(s) (defined further down)
+			// Setup function(s) (defined further down)
 			initLayout();
 		}
 		
-		//Stopwatch functions will need to be public so the main protocol can access:
+		// Stopwatch functions will need to be public so the main protocol can access:
 		void start()
 		{
-			//Check if stopwatch is off
+			// Check if stopwatch is off:
 			if (!is_running)
 			{
-				//Get our start time:
 				start_time = std::chrono::steady_clock::now();
+				// Get our start time
 				
-				//FinalCut has built in functions for checking timers function
-				//This one tells our Stopwatch class to check every 1000ms / 1s.
 				timer_id = addTimer(1000);
-
-				//Double-check timer was created succesfully
-				if (timer_id <= 0) 	//Valid IDs > 0
+				// FinalCut has built in functions for checking timers function
+				// This one tells our Stopwatch class to check every 1000ms / 1s.
+				
+				// Double-check timer was created succesfully:
+				if (timer_id <= 0) 	// Valid IDs > 0
 				{
 					setText("ERROR: Timer failed to start");
 				}
 				else
 				{
-					//Set running flag on
 					is_running = true;
+					// Set running flag on					
 				}
 			}
 		}
 		
 		void stop()
 		{
-			//Checks if stopwatch is on
+			// Checks if stopwatch is on
 			if (is_running)
 			{
-				//Set running flag off
 				is_running = false;
+				// Set running flag off
 
-				//Double-check timer before deleting
-				if (timer_id > 0) 	//Valid IDs > 0
+				// Double-check timer before deleting
+				if (timer_id > 0) 	// Valid IDs > 0
 				{
-					//delete timer
 					delTimer(timer_id);
+					// delete timer
+
 					setText("");
 				}
 			}
 		}
 
 	private:
-		//All subsequent members will be private
+		// All subsequent members will be private
 		
-		//Set some default values/declare variables:
-		bool is_running{false};								//timer defaults off
-		int timer_id{0};									//timer id of 0 (unintialized)
-		std::chrono::steady_clock::time_point start_time;	//declare w/o value
+		// Set some default values/declare variables:
+		bool is_running{false};								// timer defaults off
+		int timer_id{0};									// timer id of 0 (unintialized)
+		std::chrono::steady_clock::time_point start_time;	// declare w/o value
 
 		void initLayout()
 		{
-			//Defines a function for setup variables
-			//(Here FPoint is relative to parent dialog) (x,y w,h)
+			// Defines a function for setup variables
 
 			setText("");  //No default message
 			setGeometry(finalcut::FPoint{20,9}, finalcut::FSize{40,1});
+			// (Here FPoint is relative to parent dialog) (x,y w,h)
 
-			//Run the inheritted class's initLayout (no effect, but good practice)
 			finalcut::FLabel::initLayout();
+			// Run the inheritted class's initLayout (no effect, but good practice)			
 		}
 		
-		//FWidgets all have in-built function for reacting once timer event occurs
-		//To take advantage of this, we must override the function to redefine it:
+		// FWidgets all have in-built function for reacting once timer event occurs
+		// To take advantage of this, we must override the function to redefine it:
 		void onTimer(finalcut::FTimerEvent* ev) override
 		{
-			//function takes as input a pointer to object of type FTimerEvent
+			// function takes as input a pointer to object of type FTimerEvent
 	
-			//double-check timer ID is as expected
+			// double-check timer ID is as expected
 			if (ev->getTimerId() != timer_id)
 			{
-				return;	//uninitialized timer event-- ignore
+				return;	// uninitialized timer event-- ignore
 			}
 			
-			//Get current system clock time (not same as local datetime)
 			auto now = std::chrono::steady_clock::now();
+			// Get current system clock time (not same as local datetime)
 			
-			//Get elapsed time as function of current time and start time
 			auto elapsed = now - start_time;
+			// Get elapsed time as function of current time and start time
 			
-			//Convert elapsed time units to seconds (for easier string setup)
-			//duration_cast is a function built in to chrono library for this purpose
-			//we tell it our desired format (std::chrono::seconds) and give input (elapsed)
 			auto total_seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed);
+			// Convert elapsed time units to seconds (for easier string setup)
+			// duration_cast is a function built in to chrono library for this purpose
+			// we tell it our desired format (std::chrono::seconds) and give input (elapsed)
 			
-			//Get total minutes into current hour:
-			//.count() extracts the raw numeric value from our object, 
-			//% gives remainder after division (here after dividing after sec in 1 hr)
 			int minutes = (total_seconds.count() % 3600) / 60;
-			//technically the % 3600 part is just good/safe practice here--
-			//I intend to have a failsafe to videos can't run that long
+			// Get total minutes into current hour:
+			// .count() extracts the raw numeric value from our object, 
+			// % gives remainder after division (here after dividing after sec in 1 hr)			
+			// technically the % 3600 part is just good/safe practice here--
+			// I intend to have a failsafe to videos can't run that long
 			
-			//Get total seconds into current minute:
 			int seconds = total_seconds.count() % 60;
+			// Get total seconds into current minute:
 			
-			//Create our new label with this information:
-			//First, we create an initial object of type finalcut::FString--
-			//Elsewhere setText() can perform implicit conversion from char/string,
-			//but here we want finalcut::FString for its special formatting abilities:
-			//.setWidth() for padding numbers (here to always be display w/ two digits),
-			//and <<, which lets us append the int/string to our finalcut::FString object
+			// Create our new label with this information:
 			setText(finalcut::FString("Video Length:")
 					.setWidth(2) << minutes << ":"
 					.setWidth(2) << seconds);
-			//Side-Note: The use of "<<" here is an example of an overloaded operator:
-			//A C++ feature that lets us redefine what an operator does to an object type.
-			//Normally, << should perform a bitwise left shift (which I won't explain here)
-			//finalcut::FString is written to reuse that operator for appending instead
+			// First, we create an initial object of type finalcut::FString--
+			// Elsewhere setText() can perform implicit conversion from char/string,
+			// but here we want finalcut::FString for its special formatting abilities:
+			// .setWidth() for padding numbers (here to always be display w/ two digits),
+			// and <<, which lets us append the int/string to our finalcut::FString object
 			
-			//Now redraw the label with this new info:
-			//Normally, we let the parent box redraw everything at once for convienence
-			//Here it makes more sense to let the label redraw itself (and only itself)
+			// Side-Note: The use of "<<" here is an example of an overloaded operator:
+			// A C++ feature that lets us redefine what an operator does to an object type.
+			// Normally, << should perform a bitwise left shift (which I won't explain here)
+			// finalcut::FString is written to reuse that operator for appending instead
+			
 			redraw();
+			// Now redraw the label with this new info:
+			// Normally, we let the parent box redraw everything at once for convienence
+			// Here it makes more sense to let the label redraw itself (and only itself)			
 		}
 };
 
 
 auto main (int argc, char* argv[]) -> int
 {
-	// Create the main application object, which manages the Finalcut setup
 	finalcut::FApplication app(argc, argv);
+	// Create the main application object, which manages the Finalcut setup
 
-	//Create object of our custom dialog box class, w "dialog" as instance name
-	//Since we setup our class to initalize it's children, we don't need to do that here
 	MainDialog dialog(&app);
-
-	//Sets "dialog" as the main widget for the application.
+	// Create object of our custom dialog box class, w "dialog" as instance name
+	// Since we setup our class to initalize it's children, we don't need to do that here
+	
 	finalcut::FWidget::setMainWidget(&dialog);
+	// Sets "dialog" as the main widget for the application.
 
-	//Make the widget (and all children) visible.
 	dialog.show();
+	// Make the widget (and all children) visible.
 
-	//Starts the FinalCut main event loop (little confused by the fine details...)
 	return app.exec();
+	// Starts the FinalCut main event loop (little confused by the fine details...)	
 }
