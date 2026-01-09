@@ -23,7 +23,7 @@
 
 
 // GLOBALS
-static std::atomic<bool> stop_camera(false);	// Declare variable for signal handling
+static std::atomic<bool> stop_camera{false};	// Declare variable for signal handling
 // In this context, "static" means variable is allocated once, for lifetime of program
 // We will run our camera on a seperate thread to the TUI (so they can operate parallel)
 // Because of this, anything both can access needs to be set as atomic--
@@ -75,14 +75,18 @@ static StopType VidStart(std::string const& name) {
 	bool CameraOn{false};
 	// Setup some variables to track Camera/Encoder status for exception handling
 
-	// Side-Note: The use of {} in the above is known as braced initilization
-	// As opposed to more traditional assignment initializion (e.g. int x = 1)
-	// Generally, this is the prefered initilization method in C++
-	// The main reason is it prevents unintended narrowing conversion
-	// Narrowing conversion results when going from a wider type to a narrower type
-	// For example, trying to assign the float 3.5 to an int data type
-	// w/ assignment initilization, the result is 3 (a loss in data!)
-	// w/ braced initilization, you would get a compilation error for trying to do this
+	// (Side-Note: The use of {} in the above is known as braced initilization)
+	// (As opposed to more traditional assignment initializion (e.g. int x = 1))
+	// (Generally, this is the prefered initilization method in C++)
+	// (The main reason is it prevents unintended narrowing conversion)
+	// (Narrowing conversion results when going from a wider type to a narrower type)
+	// (For example, trying to assign the float 3.5 to an int data type)
+	// (w/ assignment initilization, the result is 3 (a loss in data!))
+	// (w/ braced initilization, you would get a compilation error for trying to do this)
+	// (I will note that I do not use braced initilization in ever possible spot here--)
+	// (It's easy to miss-- old habits die hard-- and hampers readibility at times imo)
+	// (You also *don't* use it when reassigning an already declared variable)
+	// (In that context, stick to traditional assignment, or pay the price-- errors!)
 
 	RPiCamEncoder app;
 	// Creates an object of the class "RPiCamEncoder" with name "app"
@@ -210,7 +214,7 @@ static StopType VidStart(std::string const& name) {
 
 		for (;;)  // Create infinite loop by passing no parameters to for loop
 		{
-			RPiCamEncoder::Msg msg = app.Wait();
+			RPiCamEncoder::Msg msgapp.Wait();
 			// Wait for camera to delver message, then save to struct "msg" of type Msg
 			// Camera can basically send one of the three messages:
 				// RequestComplete -- a frame is ready for processing
@@ -442,13 +446,13 @@ class MainDialog : public finalcut::FDialog
 		bool showYesNo{false};
 		// Define a boolean to handle what button set is currently visible
 		
-		std::string suggestion = filename_time();
+		std::string suggestion{filename_time()};
 		// Declare variable for input text so it'll be in all subsequent functions' scope
 		
-		std::string std_filename;
+		std::string std_filename{};
 		// Declare the filename variable so it'll be in all subsequent functions' scope
 		
-		std::thread camera_thread;
+		std::thread camera_thread{};
 		// Declare the camera's thread variable so it'll be in all subequent functions' scope
 
 		std::atomic<StopType> last_stop_reason_{StopType::USER};
@@ -643,7 +647,7 @@ class MainDialog : public finalcut::FDialog
 				status.stop();
 				// reset stopwatch
 	
-				StopType reason = last_stop_reason_.load();
+				StopType reason{last_stop_reason_.load()};
 				// get the stop reason:
 	
 				// change status text based on stop reason:
@@ -835,7 +839,7 @@ class FileName : public finalcut::FLineEdit
 			setMaxLength(255);
 			// set max text length
 			
-			std::string fsuggestion = filename_time();
+			std::string fsuggestion{filename_time()};
 			// Get current date-time as suggested file name
 
 			setText (finalcut::FString{fsuggestion});	// Need to convert type(?)
@@ -952,14 +956,14 @@ class Stopwatch : public finalcut::FLabel
 			// duration_cast is a function built in to chrono library for this purpose
 			// we tell it our desired format (std::chrono::seconds) and give input (elapsed)
 			
-			int minutes = (total_seconds.count() % 3600) / 60;
+			int minutes{(total_seconds.count() % 3600) / 60};
 			// Get total minutes into current hour:
 			// .count() extracts the raw numeric value from our object, 
 			// % gives remainder after division (here after dividing after sec in 1 hr)			
 			// technically the % 3600 part is just good/safe practice here--
 			// Our timeout is a failsafe to videos can't run that long
 			
-			int seconds = total_seconds.count() % 60;
+			int seconds{total_seconds.count() % 60};
 			// Get total seconds into current minute:
 			
 			// Create our new label with this information:
@@ -987,10 +991,10 @@ class Stopwatch : public finalcut::FLabel
 
 auto main (int argc, char* argv[]) -> int
 {
-	finalcut::FApplication app(argc, argv);
+	finalcut::FApplication app{argc, argv};
 	// Create the main application object, which manages the Finalcut setup
 
-	MainDialog dialog(&app);
+	MainDialog dialog{&app};
 	// Create object of our custom dialog box class, w/ "dialog" as instance name
 	// Since we setup our class to initalize it's children, we don't need to do that here
 	
