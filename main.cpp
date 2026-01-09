@@ -64,9 +64,25 @@ static StopType VidStart(std::string const& name) {
 	// (A reference is just another variable name for the same object in memory)
 	// That said, const means the function won't have write access on the variable
 
+	// (Side-Note: :: is a "scope resolution operator". If x::y then:)
+	// (x defines a scope-- a region of code where a variable/identifier is accessible)
+	// (Many Scopes exist, including Global or Local-- e.g. between any given set of {} )
+	// (Here, the scope is a Namespace-- which libaries use to avoid variable conflict)
+	// (y then defines an identifer-- a type, function, variable, etc. in said scope)
+	// (x::y then just lets us access identifier x in scope y)	
+
 	bool EncoderOn{false};
 	bool CameraOn{false};
 	// Setup some variables to track Camera/Encoder status for exception handling
+
+	// Side-Note: The use of {} in the above is known as braced initilization
+	// As opposed to more traditional assignment initializion (e.g. int x = 1)
+	// Generally, this is the prefered initilization method in C++
+	// The main reason is it prevents unintended narrowing conversion
+	// Narrowing conversion results when going from a wider type to a narrower type
+	// For example, trying to assign the float 3.5 to an int data type
+	// w/ assignment initilization, the result is 3 (a loss in data!)
+	// w/ braced initilization, you would get a compilation error for trying to do this
 
 	RPiCamEncoder app;
 	// Creates an object of the class "RPiCamEncoder" with name "app"
@@ -86,8 +102,8 @@ static StopType VidStart(std::string const& name) {
 		// VideoOptions is a class of type struct (basically a container to group variables)
 		// Naturally, it contains the options we want to pass to the encoder
 
-		// (Side-Note 1: All standard pointers are 2 byte, unsigned integers)
-		// (That said you need to specify the type of the uderlying object when definining)
+		// (Side-Note 1: All standard pointers in 64bit systems are 8 byte, unsigned integers)
+		// (That said you need to specify the type of the underlying object when definining)
 		// (The reason is we need to know how much data to read when dereferencing the pointer)
 		
 		// (Side-Note 2: a struct differs from a class in that members are public by default)
@@ -125,17 +141,10 @@ static StopType VidStart(std::string const& name) {
 		// Output can be a few different types, hence the need for a method to decide which
 		// Here it's most likely a "FileOutput" type (for writing to file)
 
-		// (Sidenote #1: *Technically* a smart pointer is not a pointer itself)
+		// (Side-note 1: *Technically* a smart pointer is not a pointer itself)
 		// (Rather, it's an object that wraps a pointer and offers unique behaviour on top)
 		// (*However*, syntactically they're still able to operate as a pointer!)
 		// (They accomplish this by overloading operators like -> and *)
-
-		// (Sidenote #2: :: is a "scope resolution operator". If x::y then:)
-		// (x defines a scope-- a region of code where a variable/identifier is accessible)
-		// (Many Scopes exist, including Global or Local-- e.g. between any given set of {} )
-		// (Here, the scope is a Namespace-- which libaries use to avoid variable conflict)
-		// (y then defines an identifer-- a type, function, variable, etc. in said scope)
-		// (x::y then just lets us access identifier x in scope y)
 
 		app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), 
 			std::placeholders::_1, 
@@ -203,7 +212,7 @@ static StopType VidStart(std::string const& name) {
 		{
 			RPiCamEncoder::Msg msg = app.Wait();
 			// Wait for camera to delver message, then save to struct "msg" of type Msg
-			// Camera can basically send one of the three messages::
+			// Camera can basically send one of the three messages:
 				// RequestComplete -- a frame is ready for processing
 				// Timeout -- Camera hardware timeout, need to restart camera
 				// Quit -- Request to end application/loop
@@ -246,7 +255,7 @@ static StopType VidStart(std::string const& name) {
 				}
 				continue;
 			}
-			else if (msg.type != RPiCamEncoder::MsgType::RequestComplete)	//broad error check
+			else if (msg.type != RPiCamEncoder::MsgType::RequestComplete)	// broad error check
 			{
 				if (CameraOn) {
 					app.StopCamera();	// Camera should be on, so stop it
@@ -295,7 +304,7 @@ static StopType VidStart(std::string const& name) {
 			// std::get<CompletedRequestPtr> extracts the variable of type CompleteRequestPtr
 			// Put VERY simply: This is the line that gets our actual framedata!
 
-			// (Note: completed_request must be reference due to the nature of shared_ptrs)
+			// (Side-Note: completed_request must be reference due to nature of shared_ptrs)
 			// (If it wasn't, both sides of the expression would each create a shared_ptr)
 			// (Then, we'd have to worry about both to destory the underlying variable!)
 			// (And of course, having to allocate the extra memory would be less efficient)
@@ -307,7 +316,7 @@ static StopType VidStart(std::string const& name) {
 	}
 	catch (std::exception const &e)
 	{
-		// If an error is detected during try, run the followingm using "e" as input
+		// If an error is detected during try, run the following, using "e" as input
 		// e is a constant reference, of type std::exception-- standard class for C++ errors
 		// Simply put, it's the corresponding error message for whatever failed in try.
 
@@ -322,7 +331,7 @@ static StopType VidStart(std::string const& name) {
 		// Use LOG_ERROR() macro to send error to log/terminal (depending on how code is run)
 		// e.what() is a method for type std::exception to outputs error as a string pointer
 
-		// (Note: A macro is a placeholder for preprocessor to replace before compilation)
+		// (Side-Note: A macro is a placeholder for preprocessor to replace before compilation)
 		// (A macro can be an object/variable, function (as here), or conditional)
 		// (It speed up development by reusing code w/o function calls or explicit rewrites)
 
@@ -333,7 +342,7 @@ static StopType VidStart(std::string const& name) {
 
 
 
-// FRONT END
+// FRONT END UI
 auto filename_time() -> std::string
 {
 	// Function to get current date-time as character array
@@ -363,9 +372,8 @@ class MainDialog : public finalcut::FDialog
 	// Defining a new class to handle our main dialog box
 	// Colon defines inheretance--
 	// "MainButton" class will inherit from "finalcut::FButton" class
-	// ie, it will possess all the same members (attributes and methods)
+	// ie, it will possess all the same members (objects and methods)
 	// "public" indicates public members of inherited class remain public
-	// (more on what a public member is later)
 
 	public:
 		// All subsequent members will be public
@@ -410,7 +418,8 @@ class MainDialog : public finalcut::FDialog
 				// Check if the camera is currently running
 
 				stop_camera.store(true);
-				// If so, tell the camera to shutdown
+				// If so, tell the camera to shutdown by setting flag
+				// .store() is the method for writing to atomic variable
 
 				camera_thread.join();
 				// Then wait for it to shutdown before proceeding.
@@ -420,7 +429,6 @@ class MainDialog : public finalcut::FDialog
 
 	private:
 		// All subsequent members will be private
-		
 		
 		// Initialize child widgets (defined elsewhere):
 		FileName input{this};				// File name input
@@ -449,12 +457,16 @@ class MainDialog : public finalcut::FDialog
 		void initLayout()
 		{
 			// Defines a function for startup variables
+			// "void" tells the compiler the function has no return value
 			
 			setText ("Reaching Task Camera Control");
-			setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});	//x,y w,h
+			setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});	
+			// finalcut::FPoint{x,y} handles where the top right corner of a widget goes
+			// finalcut::FPoint{w,h} handles the width and height of the widget
+			// In both cases, the units are in terms of standard-size text spaces
 
 			finalcut::FDialog::initLayout();
-			// Run the inheritted class's initLayout (no effect, but good practice)
+			// Run the inheritted class's initLayout (no effect here, but good practice)
 		}
 		
 		void initCallbacks()
@@ -483,7 +495,7 @@ class MainDialog : public finalcut::FDialog
 		
 		void cb_cbutton()
 		{
-			// Function for handling what happens when we press our button
+			// Function for handling what happens when we press our main button
 
 			// Check button state:
 			if (confirmbutton.getText() == "Start Video")
@@ -495,7 +507,7 @@ class MainDialog : public finalcut::FDialog
 				
 				std_filename = filename.toString();
 				// By default, filename will be of FString type--
-				// For our usage, we need it to be std::string, so convert
+				// For our use, need std::string (standard C++ string type), so convert
 				
 				// Check filename for issues:
 				if (std_filename.empty())
@@ -512,7 +524,7 @@ class MainDialog : public finalcut::FDialog
 					// It takes as it's first input a starting index, then goes to end
 					// .length() naturally gives the length of our string
 					// so by subtracting four, we get last four characters of the string
-					// or comparison is to avoid errors if name is less than four characters
+					// OR comparison ( || ) is to avoid errors if name is less than four characters
 					
 					status.setText("ERROR: File must have .mp4 extension");
 					// push error message to status:
@@ -532,7 +544,7 @@ class MainDialog : public finalcut::FDialog
 					// no further errors: we can start recording!
 					
 					StartProtocol();
-					// Handle it as a function so "Yes" can also call it
+					// Handle it as a function so "Yes" button can also call it
 				}
 			}
 			else
@@ -549,7 +561,7 @@ class MainDialog : public finalcut::FDialog
 		
 		void cb_ybutton()
 		{
-			// Function for handling what happens when we press our button
+			// Function for handling what happens when we press our "yes" button
 			
 			showYesNo = false;
 			// Return to main button visibility:
@@ -564,7 +576,7 @@ class MainDialog : public finalcut::FDialog
 		
 		void cb_nbutton()
 		{
-			// Function for handling what happens when we press our button
+			// Function for handling what happens when we press our "no" button
 			
 			showYesNo = false;
 			status.setText("");
@@ -595,7 +607,7 @@ class MainDialog : public finalcut::FDialog
 				// {} contains the actual code the lambda function will run
 				
 				StopType result = VidStart(filename);
-				// Run our camera function, storing rturn value in "result:				
+				// Run our camera function, storing return value in "result:"				
 
 				last_stop_reason_.store(result);
 				// Save result to atomic last_stop_reason, so other threads can reference				
@@ -614,7 +626,7 @@ class MainDialog : public finalcut::FDialog
 				// check if camera_thread is able to be closed:
 				
 				stop_camera.store(true);
-				// set stop camera flag-- .store() is write method for atomic variables
+				// set stop camera flag
 
 				status.setText(finalcut::FString("Stopping..."));
 				// set temporary status text so user knows we're mid-process
@@ -682,7 +694,7 @@ class MainDialog : public finalcut::FDialog
 			
 			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
 			// First, we get a pointer to the parent widget using getParent()
-			// Initially, the pointer is type FWidget*, but we need FDialog*
+			// Initially, the pointer is to type FWidget*, but we need FDialog*
 			// This is accomplished via static_cast<finalcut::FDialog*>
 			// Finally, we store that pointer as parent_dialog--
 			// Using auto to allow the compiller to deduce the correct type			
@@ -729,7 +741,7 @@ class ConfirmButton : public finalcut::FButton
 			// (Here FPoint is relative to parent dialog) (x,y w,h)			
 
 			finalcut::FButton::initLayout();
-			// Run the inheritted class's initLayout (no effect, but good practice)
+			// Run the inheritted class's initLayout (no effect here, but good practice)
 		}
 };
 
@@ -760,7 +772,7 @@ class YesButton : public finalcut::FButton
 			// (Here FPoint is relative to parent dialog) (x,y w,h)
 			
 			finalcut::FButton::initLayout();
-			// Run the inheritted class's initLayout (no effect, but good practice)			
+			// Run the inheritted class's initLayout (no effect here, but good practice)			
 		}
 };
 
@@ -790,7 +802,7 @@ class NoButton : public finalcut::FButton
 			// (Here FPoint is relative to parent dialog) (x,y w,h)
 
 			finalcut::FButton::initLayout();
-			// Run the inheritted class's initLayout (no effect, but good practice)			
+			// Run the inheritted class's initLayout (no effect here, but good practice)			
 		}
 };
 
@@ -834,7 +846,7 @@ class FileName : public finalcut::FLineEdit
 			// Set LabelText (to appear left of input area)
 
 			finalcut::FLineEdit::initLayout();
-			// Run the inheritted class's initLayout (no effect, but good practice)
+			// Run the inheritted class's initLayout (no effect here, but good practice)
 		}
 };
 
@@ -909,12 +921,12 @@ class Stopwatch : public finalcut::FLabel
 		{
 			// Defines a function for setup variables
 
-			setText("");  //No default message
+			setText("");  // No default message
 			setGeometry(finalcut::FPoint{20,9}, finalcut::FSize{40,1});
 			// (Here FPoint is relative to parent dialog) (x,y w,h)
 
 			finalcut::FLabel::initLayout();
-			// Run the inheritted class's initLayout (no effect, but good practice)			
+			// Run the inheritted class's initLayout (no effect here, but good practice)			
 		}
 		
 		// FWidgets all have in-built function for reacting once timer event occurs
@@ -945,7 +957,7 @@ class Stopwatch : public finalcut::FLabel
 			// .count() extracts the raw numeric value from our object, 
 			// % gives remainder after division (here after dividing after sec in 1 hr)			
 			// technically the % 3600 part is just good/safe practice here--
-			// I intend to have a failsafe to videos can't run that long
+			// Our timeout is a failsafe to videos can't run that long
 			
 			int seconds = total_seconds.count() % 60;
 			// Get total seconds into current minute:
@@ -979,7 +991,7 @@ auto main (int argc, char* argv[]) -> int
 	// Create the main application object, which manages the Finalcut setup
 
 	MainDialog dialog(&app);
-	// Create object of our custom dialog box class, w "dialog" as instance name
+	// Create object of our custom dialog box class, w/ "dialog" as instance name
 	// Since we setup our class to initalize it's children, we don't need to do that here
 	
 	finalcut::FWidget::setMainWidget(&dialog);
