@@ -50,6 +50,8 @@ static int get_colourspace_flags(std::string const &codec) {
 	else {
 		return RPiCamEncoder::FLAG_VIDEO_NONE; // otherwise, nothing needed(?)
 	}
+	// Side-Note: In C++, one-line if statements do NOT require {}
+	// For consistency, safety, and familarity, I always include them
 }
 
 
@@ -374,7 +376,10 @@ auto filename_time() -> std::string
 class ConfirmButton : public finalcut::FButton
 {
 	// Defining a new class to handle our main button
-	// It will inherit properties from the "finalcut::FButton" class
+	// Colon defines inheretance--
+	// "MainButton" class will inherit from "finalcut::FButton" class
+	// ie, it will possess all the same members (objects and methods)
+	// "public" indicates public members of inherited class remain public
 
 	public:
 		// All subsequent members will be public
@@ -382,6 +387,24 @@ class ConfirmButton : public finalcut::FButton
 		explicit ConfirmButton (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FButton{parent}
 		{
+			// Method with same name as class = "constructor"
+			// Constructor is always called when an object of the class is made
+			// "explicit" is a function specifier for conversion functions
+			// It tells compilers not to allow implicit type conversions.
+			// This is mostly a safety measure to prevent wrong method use
+
+			// This takes a pointer to a Finalcut Widget as input--
+			// Specifically, the widget that serves as our button's parent
+			// If no input is given, a default null pointer is used.
+
+			// Finally, we have the method inherit from FButton--
+			// Specifically, an instance of FButton w/ pointer "parent" as input
+
+			// Side Note: A "conversion function" converts one type to another.
+			// They're declared w/ "operator", or "explicit" for above effect.
+			// Any constructor with one input is a conversion function--
+			// Since it shows how to convert that input type to our new class.
+			
 			// Setup function(s) (defined further down):
 			initLayout();
 		}
@@ -392,10 +415,14 @@ class ConfirmButton : public finalcut::FButton
 		void initLayout()
 		{
 			// Defines a function for setup variables
+			// "void" tells the compiler the function has no return value
 			
 			setText ("Start Video");
 			setGeometry(finalcut::FPoint{22,8}, finalcut::FSize{12,1});
-			// (Here FPoint is relative to parent dialog) (x,y w,h)			
+			// finalcut::FPoint{x,y} handles where the top left corner of a widget goes
+			// finalcut::FPoint{w,h} handles the width and height of the widget
+			// In both cases, the units are in terms of standard-size text spaces
+			// Here FPoint is relative to parent dialog (x,y w,h)			
 
 			finalcut::FButton::initLayout();
 			// Run the inheritted class's initLayout (no effect here, but good practice)
@@ -641,10 +668,7 @@ class Stopwatch : public finalcut::FLabel
 class MainDialog : public finalcut::FDialog
 {
 	// Defining a new class to handle our main dialog box
-	// Colon defines inheretance--
-	// "MainButton" class will inherit from "finalcut::FButton" class
-	// ie, it will possess all the same members (objects and methods)
-	// "public" indicates public members of inherited class remain public
+	// "MainDialog" class will inherit from "finalcut::FDialog" class
 
 	public:
 		// All subsequent members will be public
@@ -652,24 +676,6 @@ class MainDialog : public finalcut::FDialog
 		explicit MainDialog (finalcut::FWidget* parent = nullptr)
 			 : finalcut::FDialog{parent}
 		{
-			// Method with same name as class = "constructor"
-			// Constructor is always called when an object of the class is made
-			// "explicit" is a function specifier for conversion functions
-			// It tells compilers not to allow implicit type conversions.
-			// This is mostly a safety measure to prevent wrong method use
-
-			// This takes a pointer to a Finalcut Widget as input--
-			// Specifically, the widget that serves as our dialog's parent
-			// If no input is given, a default null pointer is used.
-
-			// Finally, we have the method inherit from FDialog--
-			// Specifically, an instance of FDialog w/ pointer "parent" as input
-
-			// Side Note: A "conversion function" converts one type to another.
-			// They're declared w/ "operator", or "explicit" for above effect.
-			// Any constructor with one input is a conversion function--
-			// Since it shows how to convert that input type to our new class.
-
 			initLayout();
 			initCallbacks();
 			// Setup function(s) (defined further down)
@@ -738,7 +744,6 @@ class MainDialog : public finalcut::FDialog
 		void initLayout()
 		{
 			// Defines a function for startup variables
-			// "void" tells the compiler the function has no return value
 			
 			setText ("Reaching Task Camera Control");
 			// Set the text in the window label
@@ -752,9 +757,7 @@ class MainDialog : public finalcut::FDialog
 			// checkMinValue() ensures values > 0, which would cause errors
 			
 			setGeometry (finalcut::FPoint{x,y}, finalcut::FSize{56,15});	
-			// finalcut::FPoint{x,y} handles where the top left corner of a widget goes
-			// finalcut::FPoint{w,h} handles the width and height of the widget
-			// In both cases, the units are in terms of standard-size text spaces
+			// Here, FPoint is relative to *terminal* (e.g. screen)
 
 			finalcut::FDialog::initLayout();
 			// Run the inheritted class's initLayout (no effect here, but good practice)
@@ -1007,9 +1010,6 @@ class MainDialog : public finalcut::FDialog
 				
 				// Side-Note 1: When trying to access a class method:
 				// "->" is for pointers, while "." is for objects
-
-				// Side-Note 2: In C++, one-line if statements do NOT require {}
-				// For consistency, safety, and familarity, I always include them
 			}
 		}
 };
