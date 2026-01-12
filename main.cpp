@@ -214,7 +214,7 @@ static StopType VidStart(std::string const& name) {
 
 		for (;;)  // Create infinite loop by passing no parameters to for loop
 		{
-			RPiCamEncoder::Msg msgapp.Wait();
+			RPiCamEncoder::Msg msg = app.Wait();
 			// Wait for camera to delver message, then save to struct "msg" of type Msg
 			// Camera can basically send one of the three messages:
 				// RequestComplete -- a frame is ready for processing
@@ -370,373 +370,6 @@ auto filename_time() -> std::string
 	
 	return output;
 }
-
-class MainDialog : public finalcut::FDialog
-{
-	// Defining a new class to handle our main dialog box
-	// Colon defines inheretance--
-	// "MainButton" class will inherit from "finalcut::FButton" class
-	// ie, it will possess all the same members (objects and methods)
-	// "public" indicates public members of inherited class remain public
-
-	public:
-		// All subsequent members will be public
-
-		explicit MainDialog (finalcut::FWidget* parent = nullptr)
-			 : finalcut::FDialog{parent}
-		{
-			// Method with same name as class = "constructor"
-			// Constructor is always called when an object of the class is made
-			// "explicit" is a function specifier for conversion functions
-			// It tells compilers not to allow implicit type conversions.
-			// This is mostly a safety measure to prevent wrong method use
-
-			// This takes a pointer to a Finalcut Widget as input--
-			// Specifically, the widget that serves as our dialog's parent
-			// If no input is given, a default null pointer is used.
-
-			// Finally, we have the method inherit from FDialog--
-			// Specifically, an instance of FDialog w/ pointer "parent" as input
-
-			// Side Note: A "conversion function" converts one type to another.
-			// They're declared w/ "operator", or "explicit" for above effect.
-			// Any constructor with one input is a conversion function--
-			// Since it shows how to convert that input type to our new class.
-
-			initLayout();
-			initCallbacks();
-			// Setup function(s) (defined further down)
-			
-			updateButtonVisibility();
-			// Call button visibility function (defined later) to set initial state
-		}
-
-		~MainDialog()
-		{
-			// Method with ~class name = "destructor"
-			// Destructor is called when an object goes out of scope / is deleted
-			// They're used to handle any clean up operations
-
-			if (camera_thread.joinable())
-			{
-				// Check if the camera is currently running
-
-				stop_camera.store(true);
-				// If so, tell the camera to shutdown by setting flag
-				// .store() is the method for writing to atomic variable
-
-				camera_thread.join();
-				// Then wait for it to shutdown before proceeding.
-			}
-			
-		}
-
-	private:
-		// All subsequent members will be private
-		
-		// Initialize child widgets (defined elsewhere):
-		FileName input{this};				// File name input
-		ConfirmButton confirmbutton{this};	// Main button
-		YesButton yesbutton{this};			// Yes button
-		NoButton nobutton{this};			// No button
-		Stopwatch status{this};				// Stopwatch/info
-		// Widgets (and their functionality) are initalized here, in the parent--
-		// This makes handling inter-widget interaction easier
-		
-		bool showYesNo{false};
-		// Define a boolean to handle what button set is currently visible
-		
-		std::string suggestion{filename_time()};
-		// Declare variable for input text so it'll be in all subsequent functions' scope
-		
-		std::string std_filename{};
-		// Declare the filename variable so it'll be in all subsequent functions' scope
-		
-		std::thread camera_thread{};
-		// Declare the camera's thread variable so it'll be in all subequent functions' scope
-
-		std::atomic<StopType> last_stop_reason_{StopType::USER};
-		// Declare an atomic variable to handle returns from camera
-
-		void checkMinValue (int& n)
-		{
-			// Defines a function that ensures its input is always > 0
-			// void tells the compiler the function has no return values
-			// That's true because we're directly modifying our input!
-			if ( n < 1 ) {
-				n = 1 ;
-			}
-		}
-
-		void initLayout()
-		{
-			// Defines a function for startup variables
-			// "void" tells the compiler the function has no return value
-			
-			setText ("Reaching Task Camera Control");
-			// Set the text in the window label
-
-			auto x = int((getDesktopWidth() - 56) / 2);
-			auto y = int((getDesktopHeight() - 15) / 2);
-			checkMinValue(x);
-			checkMinValue(y);
-			// defining x/y values in terms of terminal size and desired window size
-			// doing this lets us dynamically prepare our window's position to be centered
-			// checkMinValue() ensures values > 0, which would cause errors
-			
-			setGeometry (finalcut::FPoint{x,y}, finalcut::FSize{56,15});	
-			// finalcut::FPoint{x,y} handles where the top left corner of a widget goes
-			// finalcut::FPoint{w,h} handles the width and height of the widget
-			// In both cases, the units are in terms of standard-size text spaces
-
-			finalcut::FDialog::initLayout();
-			// Run the inheritted class's initLayout (no effect here, but good practice)
-		}
-		
-		void initCallbacks()
-		{
-				confirmbutton.addCallback
-				(
-					"clicked",					// Callback Signal
-					this,						// Instance pointer
-					&MainDialog::cb_cbutton		// Member method pointer
-				);
-				
-				yesbutton.addCallback
-				(
-					"clicked",					// Callback Signal
-					this,						// Instance pointer
-					&MainDialog::cb_ybutton		// Member method pointer
-				);
-				
-				nobutton.addCallback
-				(
-					"clicked",					// Callback Signal
-					this,						// Instance pointer
-					&MainDialog::cb_nbutton		// Member method pointer
-				);
-		}
-		
-		void cb_cbutton()
-		{
-			// Function for handling what happens when we press our main button
-
-			// Check button state:
-			if (confirmbutton.getText() == "Start Video")
-			{
-				// Our click indicates we want to start recording
-
-				auto filename = input.getText();
-				// Get the text from our user input
-				
-				std_filename = filename.toString();
-				// By default, filename will be of FString type--
-				// For our use, need std::string (standard C++ string type), so convert
-				
-				// Check filename for issues:
-				if (std_filename.empty())
-				{
-					// filename has bad length
-					
-					status.setText("ERROR: No file name given");
-					// push error message to status:
-				}
-				else if (std_filename.length() < 4 || std_filename.substr(std_filename.length() - 4) != ".mp4")
-				{
-					// file does not have proper file extension
-					// .substr() gives a substring of the string it is applied to
-					// It takes as it's first input a starting index, then goes to end
-					// .length() naturally gives the length of our string
-					// so by subtracting four, we get last four characters of the string
-					// OR comparison ( || ) is to avoid errors if name is less than four characters
-					
-					status.setText("ERROR: File must have .mp4 extension");
-					// push error message to status:
-				}
-				else if (std::filesystem::exists(std_filename))
-				{
-					// file already exist
-					
-					status.setText("WARNING: File already exists. Overwrite?");
-					// push warning to status
-					
-					showYesNo = true;
-					// Set flag to swap buttons on redraw
-				}
-				else
-				{
-					// no further errors: we can start recording!
-					
-					StartProtocol();
-					// Handle it as a function so "Yes" button can also call it
-				}
-			}
-			else
-			{
-				// Our click indicates we want to stop recording
-				
-				StopProtocol();
-			}
-			
-			// Regardless of above, perform updates:
-			updateButtonVisibility();
-			updateScreen();
-		}
-		
-		void cb_ybutton()
-		{
-			// Function for handling what happens when we press our "yes" button
-			
-			showYesNo = false;
-			// Return to main button visibility:
-
-			StartProtocol();
-			// Start camera/stopwatch protocols:
-			
-			updateButtonVisibility();
-			updateScreen();
-			// Perform updates:
-		}
-		
-		void cb_nbutton()
-		{
-			// Function for handling what happens when we press our "no" button
-			
-			showYesNo = false;
-			status.setText("");
-			// Return to default state:						
-			
-			updateButtonVisibility();
-			updateScreen();		
-			// Perform updates			
-		}
-		
-		void StartProtocol()
-		{
-			if (camera_thread.joinable()) {
-				// check that camera isn't already starting (in case of a double-click)
-				
-				return;		// already recording-- don't continue
-			}
-			
-			camera_thread = std::thread([this, filename = std_filename]()
-			{
-				// begin camera
-				// std::thread is the class for a C++ thread
-				// camera_thread is thus our thread object, and the code in its () its content
-				// As input, we give a lambda function (synonymous with anonymous function*)
-				// lambda functions use format []() {}:
-				// [] contains any variables the function will need in its operations
-				// () describes the input argument types/names (like a regular function)
-				// {} contains the actual code the lambda function will run
-				
-				StopType result = VidStart(filename);
-				// Run our camera function, storing return value in "result:"				
-
-				last_stop_reason_.store(result);
-				// Save result to atomic last_stop_reason, so other threads can reference				
-			});
-			
-			status.start();
-			// start stopwatch			
-			
-			confirmbutton.setText("Stop Video");
-			// Change main button text to indicate changed functionality:
-		}
-		
-		void StopProtocol()
-		{
-			if (camera_thread.joinable()) {
-				// check if camera_thread is able to be closed:
-				
-				stop_camera.store(true);
-				// set stop camera flag
-
-				status.setText(finalcut::FString("Stopping..."));
-				// set temporary status text so user knows we're mid-process
-
-				status.redraw();
-				// redraw to reflect status text:
-			
-				camera_thread.join();
-				// make sure camera thread has ended before continuing
-				
-				camera_thread = std::thread();
-				// reset the thread (so it can be properly reused)
-				
-				status.stop();
-				// reset stopwatch
-	
-				StopType reason{last_stop_reason_.load()};
-				// get the stop reason:
-	
-				// change status text based on stop reason:
-				switch (reason)
-				{
-					case StopType::USER: // succesful operation
-						status.setText(finalcut::FString("Video saved as: ") 
-									   << finalcut::FString(std_filename));
-						break;	// exit switch
-					case StopType::TIMEOUT: // timeout
-						status.setText(finalcut::FString("MAX DURATION. Video saved as: ") 
-									   << finalcut::FString(std_filename));
-						break;	// exit switch
-					case StopType::ERROR: // video error
-						status.setText(finalcut::FString("ERROR: Recording failed"));
-						break;	// exit switch
-					default:	// unknown error (catch all)
-						status.setText(finalcut::FString("ERROR: Unknown stop reason"));
-						break;	// exit switch
-				}
-							
-				suggestion = filename_time();
-				// Get current date-time as suggested file name
-				
-				input.setText (finalcut::FString {suggestion});	//Need to convert type(?)
-				// set new suggested file name:
-				
-				confirmbutton.setText("Start Video");
-				// Change main button text to indicate changed functionality:
-				
-				stop_camera.store(false);
-				// now that we're all done, set flag to allow another recording:
-			}
-		}
-		
-		void updateButtonVisibility()
-		{
-			confirmbutton.setVisible(!showYesNo);	// confirm button visible if Y/N isn't
-			yesbutton.setVisible(showYesNo);		// yes button visible if flag tripped
-			nobutton.setVisible(showYesNo);			// no button visible if flag tripped
-			
-			// Could set focus, but since we're using clicks I don't think its needed?
-		}
-		
-		void updateScreen()
-		{
-			// update the screen based on our changes:
-			
-			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
-			// First, we get a pointer to the parent widget using getParent()
-			// Initially, the pointer is to type FWidget*, but we need FDialog*
-			// This is accomplished via static_cast<finalcut::FDialog*>
-			// Finally, we store that pointer as parent_dialog--
-			// Using auto to allow the compiller to deduce the correct type			
-
-			// Null pointers evaluate as false, so check we got pointer succesfully:
-			if(parent_dialog)
-			{
-				parent_dialog->redraw();
-				// If so, use that pointer to redraw the parent dialog
-				
-				// Side-Note 1: When trying to access a class method:
-				// "->" is for pointers, while "." is for objects
-
-				// Side-Note 2: In C++, one-line if statements do NOT require {}
-				// For consistency, safety, and familarity, I always include them
-			}
-		}
-};
 
 class ConfirmButton : public finalcut::FButton
 {
@@ -990,24 +623,394 @@ class Stopwatch : public finalcut::FLabel
 			// Get total seconds into current minute:
 			
 			// Create our new label with this information:
-			setText(finalcut::FString("Run Time: ")
-					.setWidth(2) << minutes << ":"
-					.setWidth(2) << seconds);
-			// First, we create an initial object of type finalcut::FString--
-			// Elsewhere setText() can perform implicit conversion from char/string,
-			// but here we want finalcut::FString for its special formatting abilities:
-			// .setWidth() for padding numbers (here to always be display w/ two digits),
-			// and <<, which lets us append the int/string to our finalcut::FString object
-			
-			// Side-Note: The use of "<<" here is an example of an overloaded operator:
-			// A C++ feature that lets us redefine what an operator does to an object type.
-			// Normally, << should perform a bitwise left shift (which I won't explain here)
-			// finalcut::FString is written to reuse that operator for appending instead
+			finalcut::FString time_str;
+			time_str.sprintf("Run Time: %02d:%02d", minutes, seconds);
+			setText(time_str);
+			// First we declare an object of type finalcut::FString
+			// Then we use the class's sptrinf method to assign formatted text:
+			// In this case, %02d indicates a two digit number (one digit get 0 padded)
+			// sprintf style string formatting is common in various languages (ex: MATLAB)
 			
 			redraw();
 			// Now redraw the label with this new info:
 			// Normally, we let the parent box redraw everything at once for convienence
 			// Here it makes more sense to let the label redraw itself (and only itself)			
+		}
+};
+
+class MainDialog : public finalcut::FDialog
+{
+	// Defining a new class to handle our main dialog box
+	// Colon defines inheretance--
+	// "MainButton" class will inherit from "finalcut::FButton" class
+	// ie, it will possess all the same members (objects and methods)
+	// "public" indicates public members of inherited class remain public
+
+	public:
+		// All subsequent members will be public
+
+		explicit MainDialog (finalcut::FWidget* parent = nullptr)
+			 : finalcut::FDialog{parent}
+		{
+			// Method with same name as class = "constructor"
+			// Constructor is always called when an object of the class is made
+			// "explicit" is a function specifier for conversion functions
+			// It tells compilers not to allow implicit type conversions.
+			// This is mostly a safety measure to prevent wrong method use
+
+			// This takes a pointer to a Finalcut Widget as input--
+			// Specifically, the widget that serves as our dialog's parent
+			// If no input is given, a default null pointer is used.
+
+			// Finally, we have the method inherit from FDialog--
+			// Specifically, an instance of FDialog w/ pointer "parent" as input
+
+			// Side Note: A "conversion function" converts one type to another.
+			// They're declared w/ "operator", or "explicit" for above effect.
+			// Any constructor with one input is a conversion function--
+			// Since it shows how to convert that input type to our new class.
+
+			initLayout();
+			initCallbacks();
+			// Setup function(s) (defined further down)
+			
+			updateButtonVisibility();
+			// Call button visibility function (defined later) to set initial state
+		}
+
+		~MainDialog()
+		{
+			// Method with ~class name = "destructor"
+			// Destructor is called when an object goes out of scope / is deleted
+			// They're used to handle any clean up operations
+
+			if (camera_thread.joinable())
+			{
+				// Check if the camera is currently running
+
+				stop_camera.store(true);
+				// If so, tell the camera to shutdown by setting flag
+				// .store() is the method for writing to atomic variable
+
+				camera_thread.join();
+				// Then wait for it to shutdown before proceeding.
+			}
+			
+		}
+
+	private:
+		// All subsequent members will be private
+		
+		// Initialize child widgets (defined above):
+		FileName input{this};				// File name input
+		ConfirmButton confirmbutton{this};	// Main button
+		YesButton yesbutton{this};			// Yes button
+		NoButton nobutton{this};			// No button
+		Stopwatch status{this};				// Stopwatch/info
+		// Widgets (and their functionality) are initalized here, in the parent--
+		// This makes handling inter-widget interaction easier
+		
+		bool showYesNo{false};
+		// Define a boolean to handle what button set is currently visible
+		
+		std::string suggestion{filename_time()};
+		// Declare variable for input text so it'll be in all subsequent functions' scope
+		
+		std::string std_filename{};
+		// Declare the filename variable so it'll be in all subsequent functions' scope
+		
+		std::thread camera_thread{};
+		// Declare the camera's thread variable so it'll be in all subequent functions' scope
+
+		std::atomic<StopType> last_stop_reason_{StopType::USER};
+		// Declare an atomic variable to handle returns from camera
+
+		void checkMinValue (int& n)
+		{
+			// Defines a function that ensures its input is always > 0
+			// void tells the compiler the function has no return values
+			// That's true because we're directly modifying our input!
+			if ( n < 1 ) {
+				n = 1 ;
+			}
+		}
+
+		void initLayout()
+		{
+			// Defines a function for startup variables
+			// "void" tells the compiler the function has no return value
+			
+			setText ("Reaching Task Camera Control");
+			// Set the text in the window label
+
+			auto x = int((getDesktopWidth() - 56) / 2);
+			auto y = int((getDesktopHeight() - 15) / 2);
+			checkMinValue(x);
+			checkMinValue(y);
+			// defining x/y values in terms of terminal size and desired window size
+			// doing this lets us dynamically prepare our window's position to be centered
+			// checkMinValue() ensures values > 0, which would cause errors
+			
+			setGeometry (finalcut::FPoint{x,y}, finalcut::FSize{56,15});	
+			// finalcut::FPoint{x,y} handles where the top left corner of a widget goes
+			// finalcut::FPoint{w,h} handles the width and height of the widget
+			// In both cases, the units are in terms of standard-size text spaces
+
+			finalcut::FDialog::initLayout();
+			// Run the inheritted class's initLayout (no effect here, but good practice)
+		}
+		
+		void initCallbacks()
+		{
+				confirmbutton.addCallback
+				(
+					"clicked",					// Callback Signal
+					this,						// Instance pointer
+					&MainDialog::cb_cbutton		// Member method pointer
+				);
+				
+				yesbutton.addCallback
+				(
+					"clicked",					// Callback Signal
+					this,						// Instance pointer
+					&MainDialog::cb_ybutton		// Member method pointer
+				);
+				
+				nobutton.addCallback
+				(
+					"clicked",					// Callback Signal
+					this,						// Instance pointer
+					&MainDialog::cb_nbutton		// Member method pointer
+				);
+		}
+		
+		void cb_cbutton()
+		{
+			// Function for handling what happens when we press our main button
+
+			// Check button state:
+			if (confirmbutton.getText() == "Start Video")
+			{
+				// Our click indicates we want to start recording
+
+				auto filename = input.getText();
+				// Get the text from our user input
+				
+				std_filename = filename.toString();
+				// By default, filename will be of FString type--
+				// For our use, need std::string (standard C++ string type), so convert
+				
+				// Check filename for issues:
+				if (std_filename.empty())
+				{
+					// filename has bad length
+					
+					status.setText("ERROR: No file name given");
+					// push error message to status:
+				}
+				else if (std_filename.length() < 4 || std_filename.substr(std_filename.length() - 4) != ".mp4")
+				{
+					// file does not have proper file extension
+					// .substr() gives a substring of the string it is applied to
+					// It takes as it's first input a starting index, then goes to end
+					// .length() naturally gives the length of our string
+					// so by subtracting four, we get last four characters of the string
+					// OR comparison ( || ) is to avoid errors if name is less than four characters
+					
+					status.setText("ERROR: File must have .mp4 extension");
+					// push error message to status:
+				}
+				else if (std::filesystem::exists(std_filename))
+				{
+					// file already exist
+					
+					status.setText("WARNING: File already exists. Overwrite?");
+					// push warning to status
+					
+					showYesNo = true;
+					// Set flag to swap buttons on redraw
+				}
+				else
+				{
+					// no further errors: we can start recording!
+					
+					StartProtocol();
+					// Handle it as a function so "Yes" button can also call it
+				}
+			}
+			else
+			{
+				// Our click indicates we want to stop recording
+				
+				StopProtocol();
+			}
+			
+			// Regardless of above, perform updates:
+			updateButtonVisibility();
+			updateScreen();
+		}
+		
+		void cb_ybutton()
+		{
+			// Function for handling what happens when we press our "yes" button
+			
+			showYesNo = false;
+			// Return to main button visibility:
+
+			StartProtocol();
+			// Start camera/stopwatch protocols:
+			
+			updateButtonVisibility();
+			updateScreen();
+			// Perform updates:
+		}
+		
+		void cb_nbutton()
+		{
+			// Function for handling what happens when we press our "no" button
+			
+			showYesNo = false;
+			status.setText("");
+			// Return to default state:						
+			
+			updateButtonVisibility();
+			updateScreen();		
+			// Perform updates			
+		}
+		
+		void StartProtocol()
+		{
+			if (camera_thread.joinable()) {
+				// check that camera isn't already starting (in case of a double-click)
+				
+				return;		// already recording-- don't continue
+			}
+
+			try {
+				camera_thread = std::thread([this, filename = std_filename]()
+				{
+					// begin camera
+					// std::thread is the class for a C++ thread
+					// camera_thread is thus our thread object, and the code in its () its content
+					// As input, we give a lambda function (synonymous with anonymous function*)
+					// lambda functions use format []() {}:
+					// [] contains any variables the function will need in its operations
+					// () describes the input argument types/names (like a regular function)
+					// {} contains the actual code the lambda function will run
+					
+					StopType result = VidStart(filename);
+					// Run our camera function, storing return value in "result:"				
+	
+					last_stop_reason_.store(result);
+					// Save result to atomic last_stop_reason, so other threads can reference				
+				});
+			}
+			catch {
+				status.setText(finalcut::FString("ERROR: Recording failed (unknown reason)"));
+				// In case our camera function breaks and throws an uncaught exception
+
+				return;
+				// camera failed-- end loop early
+			}
+			
+			status.start();
+			// start stopwatch			
+			
+			confirmbutton.setText("Stop Video");
+			// Change main button text to indicate changed functionality:
+		}
+		
+		void StopProtocol()
+		{
+			if (camera_thread.joinable()) {
+				// check if camera_thread is able to be closed:
+				
+				stop_camera.store(true);
+				// set stop camera flag
+
+				status.setText(finalcut::FString("Stopping..."));
+				// set temporary status text so user knows we're mid-process
+
+				status.redraw();
+				// redraw to reflect status text:
+			
+				camera_thread.join();
+				// make sure camera thread has ended before continuing
+				
+				camera_thread = std::thread();
+				// reset the thread (so it can be properly reused)
+				
+				status.stop();
+				// reset stopwatch
+	
+				StopType reason{last_stop_reason_.load()};
+				// get the stop reason:
+	
+				// change status text based on stop reason:
+				switch (reason)
+				{
+					case StopType::USER: // succesful operation
+						status.setText(finalcut::FString("Video saved as: ") 
+									   << finalcut::FString(std_filename));
+						break;	// exit switch
+					case StopType::TIMEOUT: // timeout
+						status.setText(finalcut::FString("MAX DURATION. Video saved as: ") 
+									   << finalcut::FString(std_filename));
+						break;	// exit switch
+					case StopType::ERROR: // video error
+						status.setText(finalcut::FString("ERROR: Recording failed"));
+						break;	// exit switch
+					default:	// unknown error (catch all)
+						status.setText(finalcut::FString("ERROR: Unknown stop reason"));
+						break;	// exit switch
+				}
+							
+				suggestion = filename_time();
+				// Get current date-time as suggested file name
+				
+				input.setText (finalcut::FString {suggestion});	//Need to convert type(?)
+				// set new suggested file name:
+				
+				confirmbutton.setText("Start Video");
+				// Change main button text to indicate changed functionality:
+				
+				stop_camera.store(false);
+				// now that we're all done, set flag to allow another recording:
+			}
+		}
+		
+		void updateButtonVisibility()
+		{
+			confirmbutton.setVisible(!showYesNo);	// confirm button visible if Y/N isn't
+			yesbutton.setVisible(showYesNo);		// yes button visible if flag tripped
+			nobutton.setVisible(showYesNo);			// no button visible if flag tripped
+			
+			// Could set focus, but since we're using clicks I don't think its needed?
+		}
+		
+		void updateScreen()
+		{
+			// update the screen based on our changes:
+			
+			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
+			// First, we get a pointer to the parent widget using getParent()
+			// Initially, the pointer is to type FWidget*, but we need FDialog*
+			// This is accomplished via static_cast<finalcut::FDialog*>
+			// Finally, we store that pointer as parent_dialog--
+			// Using auto to allow the compiller to deduce the correct type			
+
+			// Null pointers evaluate as false, so check we got pointer succesfully:
+			if(parent_dialog)
+			{
+				parent_dialog->redraw();
+				// If so, use that pointer to redraw the parent dialog
+				
+				// Side-Note 1: When trying to access a class method:
+				// "->" is for pointers, while "." is for objects
+
+				// Side-Note 2: In C++, one-line if statements do NOT require {}
+				// For consistency, safety, and familarity, I always include them
+			}
 		}
 };
 
