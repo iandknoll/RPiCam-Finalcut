@@ -6,9 +6,10 @@
 
 // CAMERA DEPENDENCIES
 #include "core/rpicam_encoder.hpp" 	// Contains code for encoding video w/ rpicam
-#include "core/logging.hpp"			// Contains code for the logginc macro used
+#include "core/logging.hpp"			// Contains code for the logging macro used
 #include "output/output.hpp"  		// Contains code for outputing video to file
 #include <functional>				// Needed to use std::bind
+#include <memory>					// Needed for smart pointers
 
 // FRONT END DEPENDENCIES
 #include <final/final.h> 			// Includes the basic FinalCut library
@@ -54,7 +55,6 @@ static int get_colourspace_flags(std::string const &codec) {
 	// For consistency, safety, and familarity, I always include them
 }
 
-
 static StopType VidStart(std::string const& name) {
 	// Define function for running rpicam-vid
 	// static means the function can't be called outside this source file
@@ -94,7 +94,42 @@ static StopType VidStart(std::string const& name) {
 	// Creates an object of the class "RPiCamEncoder" with name "app"
 	// RPiCamEncoder handles the video recording pipeline
 	// We do this outside of the try block so it's in scope for catch
-	
+
+	auto TryEncoderOff = [&app, &EncoderOn]() {
+		try {
+			if (EncoderOn) {
+				app.StopEncoder();
+				EncoderOn = false;	// technically not needed, but safe practice
+			}
+		} catch (std::exception const &e) {
+			LOG_ERROR("ERROR: Unable to stop encoder: " << e.what());
+			return StopType::ERROR	// end function early, error as reason
+		}
+	};
+
+	auto TryCameraOff = [&app, &CameraOn]() {
+		try {
+			if (CameraOn) {
+				app.StopCamera();
+				CameraOn = false;	//technically not needed, but safe practice
+			}
+		} catch (std::exception const &e) {
+			LOG_ERROR("ERROR: Unable to stop camera:"  << e.what());
+			return StopType::ERROR // end function early, error as reason
+		}
+	};
+	// The above are lambda functions (synonymous with anonymous function*)
+	// lambda functions use format []() {}:
+	// [] contains any variables the function will need in its operations
+	// () describes the input argument types/names (like a regular function)
+	// {} contains the actual code the lambda function will run
+	// They're a quick way of defining behaviour that will be repeated
+	// In this case, our protocol for stopping the camera and encoder (see later)
+
+	// Side-Note: Need to specify variables to be capture by reference (e.g. &var)
+	// Otherwise, lambda functions will capture by value (create a copy at initilization)
+	// Said copy wouldn't reflect updates to the variables-- capture by reference will!
+
 	try
 	{
 		// try: attempt to run the following code.
@@ -130,9 +165,12 @@ static StopType VidStart(std::string const& name) {
 		options->gain = 2;						// analog gain
 		options->denoise = "cdn_off"; 			// turns off color denoise (for fps)
 		options->nopreview = true;				// turns off preview (for fps)
-		// the arrow operator -> dereferences a pointer (getting the unnderlying object),
+		// the arrow operator -> dereferences a pointer (getting the underlying object),
 		// then accesses the specified member of the class on the right hand side of arrow
 		// here "member" just means a variable, function, etc. defined inside a class/struct
+
+		// Side-Note: Just to drill it in, when trying to access a class method:
+		// "->" is for pointers (like "options" here), while "." is for objects
 
 
 		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
@@ -178,9 +216,10 @@ static StopType VidStart(std::string const& name) {
 		// So one last time, in plain English. this line of code is saying:
 		// "When an encoded frame is ready, respond by processing it with OutputReady,
 		// using output.get()-- which tells it which method to use to route/write data--
-		// and the four afformentioned frame parameters as inputs."
+		// and the four aformentioned frame parameters as inputs."
 
-		app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(), _1));
+		app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(), 
+			std::placeholders::_1));
 		// Roughly the same idea as the prior line of code, only handling metadata--
 		// things like exposure, gain values, white balance, etc.
 		// Here the only expected paramater is an object of class libcamera::ControlList,
@@ -225,12 +264,8 @@ static StopType VidStart(std::string const& name) {
 
 			if (msg.type == RPiCamApp::MsgType::Quit)  // Quit received
 			{
-				if (CameraOn) {
-					app.StopCamera();	// Camera should be on, so stop it
-				}
-				if (EncoderOn) {
-					app.StopEncoder();	// Encoder should be on, so stop it
-				}
+				TryCameraOff();			// Try to end camera
+				TryEncoderOff();		// Try to end encoder
 				return StopType::USER;	// End loop early, user as reason
 			}
 			else if (msg.type == RPiCamApp::MsgType::Timeout) // Camera timed out
@@ -251,36 +286,24 @@ static StopType VidStart(std::string const& name) {
 					LOG_ERROR("ERROR: Camera restart failed: " << e.what());
 					// Log the issue in terminal/log file (depending on how program ran)
 	
-					if (CameraOn) {
-						app.StopCamera();	// Camera should be on, so stop it
-					}
-					if (EncoderOn) {
-						app.StopEncoder();	// Encoder should be on, so stop it
-					}
+					TryCameraOff();				// Try to end camera
+					TryEncoderOff();			// Try to end encoder
 					return StopType::ERROR;		// End loop early, error as reason
 				}
 				continue;
 			}
-			else if (msg.type != RPiCamEncoder::MsgType::RequestComplete)	// broad error check
+			else if (msg.type != RPiCamApp::MsgType::RequestComplete)	// broad error check
 			{
-				if (CameraOn) {
-					app.StopCamera();	// Camera should be on, so stop it
-				}
-				if (EncoderOn) {
-					app.StopEncoder();	// Encoder should be on, so stop it
-				}
+				TryCameraOff();				// Try to end camera
+				TryEncoderOff();			// Try to end encoder
 				return StopType::ERROR;		// End loop early, error as reason
 			}
 
 			auto now = std::chrono::high_resolution_clock::now();	// Get current time
 			if ((now - start_time) > options->timeout.value)	// If elapsed time > timeout
 			{
-				if (CameraOn) {
-					app.StopCamera();	// Camera should be on, so stop it
-				}
-				if (EncoderOn) {
-					app.StopEncoder();	// Encoder should be on, so stop it
-				}
+				TryCameraOff();					// Try to end camera
+				TryEncoderOff();				// Try to end encoder
 				return StopType::TIMEOUT;		// End loop early, timeout as reason
 			}
 
@@ -288,13 +311,9 @@ static StopType VidStart(std::string const& name) {
 			{
 				//Note: .load() is the how you read an atomic variable
 				
-				if (CameraOn) {
-					app.StopCamera();	// Camera should be on, so stop it
-				}
-				if (EncoderOn) {
-					app.StopEncoder();	// Encoder should be on, so stop it
-				}
-				return StopType::USER;	// End loop early, user as reason
+				TryCameraOff();				// Try to end camera
+				TryEncoderOff();			// Try to end encoder
+				return StopType::USER;		// End loop early, user as reason
 			}
 			
 			CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
@@ -326,12 +345,8 @@ static StopType VidStart(std::string const& name) {
 		// e is a constant reference, of type std::exception-- standard class for C++ errors
 		// Simply put, it's the corresponding error message for whatever failed in try.
 
-		if (CameraOn) {
-			app.StopCamera();	// Camera should be on, so stop it
-		}
-		if (EncoderOn) {
-			app.StopEncoder();	// Encoder should be on, so stop it
-		}
+		TryCameraOff();			// Try to end camera
+		TryEncoderOff();		// Try to end encoder
 		
 		LOG_ERROR("ERROR: *** " << e.what() << " ***");
 		// Use LOG_ERROR() macro to send error to log/terminal (depending on how code is run)
@@ -895,27 +910,25 @@ class MainDialog : public finalcut::FDialog
 					// begin camera
 					// std::thread is the class for a C++ thread
 					// camera_thread is thus our thread object, and the code in its () its content
-					// As input, we give a lambda function (synonymous with anonymous function*)
-					// lambda functions use format []() {}:
-					// [] contains any variables the function will need in its operations
-					// () describes the input argument types/names (like a regular function)
-					// {} contains the actual code the lambda function will run
-					
-					StopType result = VidStart(filename);
-					// Run our camera function, storing return value in "result:"				
-	
-					last_stop_reason_.store(result);
-					// Save result to atomic last_stop_reason, so other threads can reference				
-				});
-			}
-			catch {
-				status.setText(finalcut::FString("ERROR: Recording failed (unknown reason)"));
-				// In case our camera function breaks and throws an uncaught exception
+					// As input, we give a lambda function that tries out video function
+					try {
+						StopType result = VidStart(filename);
+						// Run our camera function, storing return value in "result"				
+		
+						last_stop_reason_.store(result);
+						// Save result to atomic last_stop_reason, so other threads can reference
+					} catch (std::exception const &e) {
+						last_stop_reason_.store(StopType::ERROR);
+						// Failsafe if VidStart() throws an error we didn't implement catches for
+					}
+				}); 
+			} catch (std::exception const &e) {
+				// if statement failed-- for some reason, the camera thread wasn't created
+				status.setText(finalcut::FString("ERROR: Failed to initialize camera thread"));
 
-				return;
-				// camera failed-- end loop early
+				return;		// camera failed-- don't continue
 			}
-			
+				
 			status.start();
 			// start stopwatch			
 			
@@ -994,22 +1007,11 @@ class MainDialog : public finalcut::FDialog
 		void updateScreen()
 		{
 			// update the screen based on our changes:
-			
-			auto parent_dialog = static_cast<finalcut::FDialog*>(getParent());
-			// First, we get a pointer to the parent widget using getParent()
-			// Initially, the pointer is to type FWidget*, but we need FDialog*
-			// This is accomplished via static_cast<finalcut::FDialog*>
-			// Finally, we store that pointer as parent_dialog--
-			// Using auto to allow the compiller to deduce the correct type			
-
-			// Null pointers evaluate as false, so check we got pointer succesfully:
-			if(parent_dialog)
-			{
-				parent_dialog->redraw();
-				// If so, use that pointer to redraw the parent dialog
-				
-				// Side-Note 1: When trying to access a class method:
-				// "->" is for pointers, while "." is for objects
+			redraw();
+			// Originally, this function was made assuming the child widgets would call it
+			// The logic was far more complicated, involving getting a pointer to parent
+			// Check older commits if curious-- there's good instructional value
+			// Now however, updates are always done by parent-- hence one-line function
 			}
 		}
 };
