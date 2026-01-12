@@ -457,15 +457,35 @@ class MainDialog : public finalcut::FDialog
 
 		std::atomic<StopType> last_stop_reason_{StopType::USER};
 		// Declare an atomic variable to handle returns from camera
-		
+
+		void checkMinValue (int& n)
+		{
+			// Defines a function that ensures its input is always > 0
+			// void tells the compiler the function has no return values
+			// That's true because we're directly modifying our input!
+			if ( n < 1 ) {
+				n = 1 ;
+			}
+		}
+
 		void initLayout()
 		{
 			// Defines a function for startup variables
 			// "void" tells the compiler the function has no return value
 			
 			setText ("Reaching Task Camera Control");
-			setGeometry (finalcut::FPoint{25,5}, finalcut::FSize{60,20});	
-			// finalcut::FPoint{x,y} handles where the top right corner of a widget goes
+			// Set the text in the window label
+
+			auto x = int((getDesktopWidth() - 56) / 2);
+			auto y = int((getDesktopHeight() - 15) / 2);
+			checkMinValue(x);
+			checkMinValue(y);
+			// defining x/y values in terms of terminal size and desired window size
+			// doing this lets us dynamically prepare our window's position to be centered
+			// checkMinValue() ensures values > 0, which would cause errors
+			
+			setGeometry (finalcut::FPoint{x,y}, finalcut::FSize{56,15});	
+			// finalcut::FPoint{x,y} handles where the top left corner of a widget goes
 			// finalcut::FPoint{w,h} handles the width and height of the widget
 			// In both cases, the units are in terms of standard-size text spaces
 
@@ -658,7 +678,7 @@ class MainDialog : public finalcut::FDialog
 									   << finalcut::FString(std_filename));
 						break;	// exit switch
 					case StopType::TIMEOUT: // timeout
-						status.setText(finalcut::FString("MAX DURATION REACHED. Video saved as: ") 
+						status.setText(finalcut::FString("MAX DURATION. Video saved as: ") 
 									   << finalcut::FString(std_filename));
 						break;	// exit switch
 					case StopType::ERROR: // video error
@@ -741,7 +761,7 @@ class ConfirmButton : public finalcut::FButton
 			// Defines a function for setup variables
 			
 			setText ("Start Video");
-			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{20,1});
+			setGeometry(finalcut::FPoint{22,8}, finalcut::FSize{12,1});
 			// (Here FPoint is relative to parent dialog) (x,y w,h)			
 
 			finalcut::FButton::initLayout();
@@ -772,7 +792,7 @@ class YesButton : public finalcut::FButton
 			// Defines a function for setup variables
 			
 			setText ("Yes");
-			setGeometry(finalcut::FPoint{20,7}, finalcut::FSize{8,1});
+			setGeometry(finalcut::FPoint{23,8}, finalcut::FSize{3,1});
 			// (Here FPoint is relative to parent dialog) (x,y w,h)
 			
 			finalcut::FButton::initLayout();
@@ -802,7 +822,7 @@ class NoButton : public finalcut::FButton
 		{
 			// Defines a function for setup variables
 			setText ("No");
-			setGeometry(finalcut::FPoint{32,7}, finalcut::FSize{8,1});
+			setGeometry(finalcut::FPoint{32,8}, finalcut::FSize{3,1});
 			// (Here FPoint is relative to parent dialog) (x,y w,h)
 
 			finalcut::FButton::initLayout();
@@ -843,7 +863,7 @@ class FileName : public finalcut::FLineEdit
 			// Get current date-time as suggested file name
 
 			setText (finalcut::FString{fsuggestion});	// Need to convert type(?)
-			setGeometry (finalcut::FPoint{14,2}, finalcut::FSize{30,1});
+			setGeometry (finalcut::FPoint{20,4}, finalcut::FSize{30,1});
 			// (Here FPoint is relative to parent dialog) (x,y w,h)
 			
 			setLabelText("File Name: ");
@@ -926,9 +946,12 @@ class Stopwatch : public finalcut::FLabel
 			// Defines a function for setup variables
 
 			setText("");  // No default message
-			setGeometry(finalcut::FPoint{20,9}, finalcut::FSize{40,1});
+			setGeometry(finalcut::FPoint{3,11}, finalcut::FSize{50,1});
 			// (Here FPoint is relative to parent dialog) (x,y w,h)
 
+			setAlignment(finalcut::Align::Center);
+			// Text put into the label will be center aligned
+			
 			finalcut::FLabel::initLayout();
 			// Run the inheritted class's initLayout (no effect here, but good practice)			
 		}
@@ -967,7 +990,7 @@ class Stopwatch : public finalcut::FLabel
 			// Get total seconds into current minute:
 			
 			// Create our new label with this information:
-			setText(finalcut::FString("Video Length:")
+			setText(finalcut::FString("Run Time: ")
 					.setWidth(2) << minutes << ":"
 					.setWidth(2) << seconds);
 			// First, we create an initial object of type finalcut::FString--
