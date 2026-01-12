@@ -21,16 +21,10 @@
 #include <string>					// Required for std::string type
 #include <atomic>					// Required for our global variable
 #include <thread>					// Required for threading
+#include <mutex>					// Required for thread syncronization
 
 
 // GLOBALS
-static std::atomic<bool> stop_camera{false};	// Declare variable for signal handling
-// In this context, "static" means variable is allocated once, for lifetime of program
-// We will run our camera on a seperate thread to the TUI (so they can operate parallel)
-// Because of this, anything both can access needs to be set as atomic--
-// In brief, this prevents other threads from seeing mid-write (garbage) states.
-// This is what we're doing here with the "std::atomic<bool>" part
-
 enum class StopType {
 	USER = 0,
 	TIMEOUT = 1,
@@ -39,9 +33,29 @@ enum class StopType {
 // enum: user defined data type assigning names to integer values
 // mainly for readability-- using here to have plaintext names for function returns
 
+struct CameraStopInfo {
+	StopType type;						// why did camera stop?
+	std::string error_message = "";		// error messages (if applicable)
+	
+}
+// struct: user defined class for storing data of multiple types in one variable
+// a struct differs from a standard class in that members are public by default)
+// This means that you can directly access them from outside of the struct
+
+static std::atomic<bool> stop_camera{false};		// flag for camera stop requests
+static std::atomic<bool> camera_finished{false};	// flag to indicate camera stops
+// In this context, "static" means variable is allocated once, for lifetime of program
+// We will run our camera on a seperate thread to the TUI (so they can operate parallel)
+// Because of this, anything both can access needs to be set as atomic--
+// In brief, this prevents other threads from seeing mid-write (garbage) states.
+// This is what we're doing here with the "std::atomic<bool>" part
+
+static std::mutex camera_stop_info_mutex;
+static CameraStopInfo camera_stop_info;
+//NTS: STILL DON'T GET THIS YET
 
 // CAMERA
-static int get_colourspace_flags(std::string const &codec) {
+static int get_colourspace_flags(std::string const& codec) {
 	// Function for handling encoder colour space
 	// Copied from rpicam_vid.cpp-- it being static there means we can't reference it
 	if (codec == "mjpeg" || codec == "yuv420") {
@@ -58,13 +72,7 @@ static int get_colourspace_flags(std::string const &codec) {
 static StopType VidStart(std::string const& name) {
 	// Define function for running rpicam-vid
 	// static means the function can't be called outside this source file
-	// StopType is the expected type of any return variable (defined later)
-	// "std::string const& name" passes a reference to a variable of type string as input
-	// passing by reference is faster and more memory efficient than passing by value
-	// This is because passing by value requires creating a copy of the variable
-	// BUT, using a reference means modifying the parameter WILL affect the original
-	// (A reference is just another variable name for the same object in memory)
-	// That said, const means the function won't have write access on the variable
+	// StopType is the expected type of any return variable
 
 	// (Side-Note: :: is a "scope resolution operator". If x::y then:)
 	// (x defines a scope-- a region of code where a variable/identifier is accessible)
@@ -99,11 +107,12 @@ static StopType VidStart(std::string const& name) {
 		try {
 			if (EncoderOn) {
 				app.StopEncoder();
-				EncoderOn = false;	// technically not needed, but safe practice
+				EncoderOn = false;		// technically not needed, but safe practice
 			}
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop encoder: " << e.what());
-			return StopType::ERROR	// end function early, error as reason
+			return;		// end function early
+			// NTS THIS RETURN IS AN ISSUE 
 		}
 	};
 
@@ -115,7 +124,8 @@ static StopType VidStart(std::string const& name) {
 			}
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop camera:"  << e.what());
-			return StopType::ERROR // end function early, error as reason
+			return; 	// end function early
+			// NTS THIS RETURN IS AN ISSUE 	
 		}
 	};
 	// The above are lambda functions (synonymous with anonymous function*)
@@ -146,11 +156,6 @@ static StopType VidStart(std::string const& name) {
 		// (Side-Note 1: All standard pointers in 64bit systems are 8 byte, unsigned integers)
 		// (That said you need to specify the type of the underlying object when definining)
 		// (The reason is we need to know how much data to read when dereferencing the pointer)
-		
-		// (Side-Note 2: a struct differs from a class in that members are public by default)
-		// (This means that you can directly access them from outside of the struct)
-		// (In a class, members must be explicitly set as public, otherwise they're private)
-		// (The later  means they can only be accessed from outside in special circumstances)
 
 		// Adjust these values according to your own needs:
 		options->output = name; 				// file name (here our input)
@@ -266,7 +271,16 @@ static StopType VidStart(std::string const& name) {
 			{
 				TryCameraOff();			// Try to end camera
 				TryEncoderOff();		// Try to end encoder
-				return StopType::USER;	// End loop early, user as reason
+
+				{
+					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo(StopType::USER, "");
+					// NTS: DON'T GET THIS YET EITHER
+				}
+				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				// .store() is the method for writing to atomic variable
+				
+				return;	// End loop early
 			}
 			else if (msg.type == RPiCamApp::MsgType::Timeout) // Camera timed out
 			{
@@ -288,9 +302,19 @@ static StopType VidStart(std::string const& name) {
 	
 					TryCameraOff();				// Try to end camera
 					TryEncoderOff();			// Try to end encoder
-					return StopType::ERROR;		// End loop early, error as reason
+					
+					{
+						std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
+						camera_stop_info = CameraStopInfo(
+							StopType::USER,
+							std::string("Camera restart failed: ") + e.what()
+						);
+						// NTS: DON'T GET THIS YET EITHER
+					}
+					camera_finished.store(true);	// Let other threads know we're done w/ camera
+					return;							// End loop early
 				}
-				continue;
+				continue;	// Camera succesfully restarted, continue as normal
 			}
 			else if (msg.type != RPiCamApp::MsgType::RequestComplete)	// broad error check
 			{
@@ -711,7 +735,6 @@ class MainDialog : public finalcut::FDialog
 
 				stop_camera.store(true);
 				// If so, tell the camera to shutdown by setting flag
-				// .store() is the method for writing to atomic variable
 
 				camera_thread.join();
 				// Then wait for it to shutdown before proceeding.
@@ -860,7 +883,14 @@ class MainDialog : public finalcut::FDialog
 			{
 				// Our click indicates we want to stop recording
 				
-				StopProtocol();
+				stop_camera.store(true);
+				// set stop camera flag
+
+				status.setText(finalcut::FString("Stopping..."));
+				// set temporary status text so user knows we're mid-process
+
+				status.redraw();
+				// redraw to reflect status text:
 			}
 			
 			// Regardless of above, perform updates:
@@ -920,13 +950,15 @@ class MainDialog : public finalcut::FDialog
 					} catch (std::exception const &e) {
 						last_stop_reason_.store(StopType::ERROR);
 						// Failsafe if VidStart() throws an error we didn't implement catches for
+
+						return;		// camera failed-- don't continue past here
 					}
 				}); 
 			} catch (std::exception const &e) {
 				// if statement failed-- for some reason, the camera thread wasn't created
 				status.setText(finalcut::FString("ERROR: Failed to initialize camera thread"));
 
-				return;		// camera failed-- don't continue
+				return;		// thread failed-- don't continue past here
 			}
 				
 			status.start();
@@ -940,15 +972,6 @@ class MainDialog : public finalcut::FDialog
 		{
 			if (camera_thread.joinable()) {
 				// check if camera_thread is able to be closed:
-				
-				stop_camera.store(true);
-				// set stop camera flag
-
-				status.setText(finalcut::FString("Stopping..."));
-				// set temporary status text so user knows we're mid-process
-
-				status.redraw();
-				// redraw to reflect status text:
 			
 				camera_thread.join();
 				// make sure camera thread has ended before continuing
