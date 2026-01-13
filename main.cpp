@@ -628,7 +628,6 @@ class MainDialog : public finalcut::FDialog
 		void updateScreen()
 		{
 			redraw();
-			}
 		}
 
 		void onUserEvent(finalcut::FUserEvent* ev) override {
