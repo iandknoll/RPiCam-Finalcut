@@ -61,10 +61,10 @@ void VidStart(std::string const& name) {
 				app.StopEncoder();
 				EncoderOn = false;
 			}
+			return true;
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop encoder: " << e.what());
-			
-			throw std::runtime_error("Failed to stop encoder: " +std::string(e.what()));
+			return false;
 		}
 	};
 
@@ -74,10 +74,10 @@ void VidStart(std::string const& name) {
 				app.StopCamera();
 				CameraOn = false;
 			}
+			return true;
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop camera:"  << e.what());
-			
-			throw std::runtime_error("Failed to stop camera: " +std::string(e.what()));
+			return false;
 		}
 	};
 	
@@ -99,6 +99,13 @@ void VidStart(std::string const& name) {
 		options->denoise = "cdn_off"; 			// turns off color denoise (for fps)
 		options->nopreview = true;				// turns off preview (for fps)
 
+		const char* dummy_argv[] = {"program"}
+		int dummy_argc = 1;
+
+		if (!options->Parse(dummy_argc, const_char<char**>(dummy_argv))) {
+			throw std::runtime_error("Failed to parse options")
+		}
+		
 		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
 
 		app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), 
@@ -128,12 +135,11 @@ void VidStart(std::string const& name) {
 
 			if (msg.type == RPiCamApp::MsgType::Quit)
 			{
-				TryCameraOff();
-				TryEncoderOff();
-
-				{	
+				if (!() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
-					
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+				} else {	
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::USER, ""};
 				}
 				camera_finished.store(true);
@@ -149,10 +155,10 @@ void VidStart(std::string const& name) {
 					CameraOn = true;
 				}
 				catch (std::exception const &e) {
-					TryCameraOff();
-					TryEncoderOff();
-					
-					{
+					if (!() || !TryEncoderOff()) {
+						std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+						camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+					} else {
 						std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 						camera_stop_info = CameraStopInfo{
 							StopType::ERROR,
@@ -166,10 +172,10 @@ void VidStart(std::string const& name) {
 			}
 			else if (msg.type != RPiCamApp::MsgType::RequestComplete)
 			{
-				TryCameraOff();
-				TryEncoderOff();
-				
-				{
+				if (!() || !TryEncoderOff()) {
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+				} else {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{
 						StopType::ERROR,
@@ -183,10 +189,10 @@ void VidStart(std::string const& name) {
 			auto now = std::chrono::high_resolution_clock::now();
 			if ((now - start_time) > options->timeout.value)
 			{
-				TryCameraOff();
-				TryEncoderOff();
-				
-				{
+				if (!() || !TryEncoderOff()) {
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+				} else {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{
 						StopType::TIMEOUT,
@@ -199,10 +205,10 @@ void VidStart(std::string const& name) {
 
 			if (stop_camera.load())
 			{				
-				TryCameraOff();
-				TryEncoderOff();
-				
-				{
+				if (!() || !TryEncoderOff()) {
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+				} else {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{
 						StopType::USER,
@@ -220,10 +226,10 @@ void VidStart(std::string const& name) {
 	}
 	catch (std::exception const &e)
 	{
-		TryCameraOff();
-		TryEncoderOff();
-		
-		{
+		if (!() || !TryEncoderOff()) {
+			std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+			camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+		} else {
 			std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 			camera_stop_info = CameraStopInfo{
 				StopType::ERROR,
@@ -545,11 +551,7 @@ class MainDialog : public finalcut::FDialog
 			}
 			else
 			{				
-				stop_camera.store(true);
-
-				status.setText(finalcut::FString("Stopping..."));
-
-				status.redraw();
+				StopProtocol();
 			}
 			
 			updateButtonVisibility();
