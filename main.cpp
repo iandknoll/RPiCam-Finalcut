@@ -99,10 +99,10 @@ void VidStart(std::string const& name) {
 		options->denoise = "cdn_off"; 			// turns off color denoise (for fps)
 		options->nopreview = true;				// turns off preview (for fps)
 
-		const char* dummy_argv[] = {"program"}
+		const char* dummy_argv[] = {"program"};
 		int dummy_argc = 1;
 
-		if (!options->Parse(dummy_argc, const_char<char**>(dummy_argv))) {
+		if (!options->Parse(dummy_argc, const_cast<char**>(dummy_argv))) {
 			throw std::runtime_error("Failed to parse options")
 		}
 		
@@ -135,7 +135,7 @@ void VidStart(std::string const& name) {
 
 			if (msg.type == RPiCamApp::MsgType::Quit)
 			{
-				if (!() || !TryEncoderOff()) {
+				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
 				} else {	
@@ -155,7 +155,7 @@ void VidStart(std::string const& name) {
 					CameraOn = true;
 				}
 				catch (std::exception const &e) {
-					if (!() || !TryEncoderOff()) {
+					if (!TryCameraOff() || !TryEncoderOff()) {
 						std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 						camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
 					} else {
@@ -172,7 +172,7 @@ void VidStart(std::string const& name) {
 			}
 			else if (msg.type != RPiCamApp::MsgType::RequestComplete)
 			{
-				if (!() || !TryEncoderOff()) {
+				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
 				} else {
