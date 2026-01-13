@@ -1051,7 +1051,6 @@ class MainDialog : public finalcut::FDialog
 			// The logic was far more complicated, involving getting a pointer to parent
 			// Check older commits if curious-- there's good instructional value
 			// Now however, updates are always done by parent-- hence one-line function
-			}
 		}
 
 		void onUserEvent(finalcut::FUserEvent* ev) override {
