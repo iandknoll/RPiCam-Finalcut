@@ -69,10 +69,8 @@ static int get_colourspace_flags(std::string const& codec) {
 	// For consistency, safety, and familarity, I always include them
 }
 
-static StopType VidStart(std::string const& name) {
+void VidStart(std::string const& name) {
 	// Define function for running rpicam-vid
-	// static means the function can't be called outside this source file
-	// StopType is the expected type of any return variable
 
 	// (Side-Note: :: is a "scope resolution operator". If x::y then:)
 	// (x defines a scope-- a region of code where a variable/identifier is accessible)
@@ -306,7 +304,7 @@ static StopType VidStart(std::string const& name) {
 					{
 						std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
 						camera_stop_info = CameraStopInfo(
-							StopType::USER,
+							StopType::ERROR,
 							std::string("Camera restart failed: ") + e.what()
 						);
 						// NTS: DON'T GET THIS YET EITHER
@@ -320,7 +318,17 @@ static StopType VidStart(std::string const& name) {
 			{
 				TryCameraOff();				// Try to end camera
 				TryEncoderOff();			// Try to end encoder
-				return StopType::ERROR;		// End loop early, error as reason
+				
+				{
+					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo(
+						StopType::ERROR,
+						"Unexpected message type received"
+					);
+					// NTS: DON'T GET THIS YET EITHER
+				}
+				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				return;							// End loop early
 			}
 
 			auto now = std::chrono::high_resolution_clock::now();	// Get current time
@@ -328,7 +336,17 @@ static StopType VidStart(std::string const& name) {
 			{
 				TryCameraOff();					// Try to end camera
 				TryEncoderOff();				// Try to end encoder
-				return StopType::TIMEOUT;		// End loop early, timeout as reason
+				
+				{
+					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo(
+						StopType::TIMEOUT,
+						""
+					);
+					// NTS: DON'T GET THIS YET EITHER
+				}
+				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				return;							// End loop early
 			}
 
 			if (stop_camera.load()) // If the user send a shutdown signal
@@ -337,7 +355,17 @@ static StopType VidStart(std::string const& name) {
 				
 				TryCameraOff();				// Try to end camera
 				TryEncoderOff();			// Try to end encoder
-				return StopType::USER;		// End loop early, user as reason
+				
+				{
+					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo(
+						StopType::USER,
+						""
+					);
+					// NTS: DON'T GET THIS YET EITHER
+				}
+				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				return;							// End loop early
 			}
 			
 			CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
@@ -380,8 +408,16 @@ static StopType VidStart(std::string const& name) {
 		// (A macro can be an object/variable, function (as here), or conditional)
 		// (It speed up development by reusing code w/o function calls or explicit rewrites)
 
-		return StopType::ERROR;
-		// If an error occured, end script and indicate error as stop reason
+		{
+			std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
+			camera_stop_info = CameraStopInfo(
+				StopType::ERROR,
+				std::string("Exception: ") + e.what()
+			);
+			// NTS: DON'T GET THIS YET EITHER
+		}
+		camera_finished.store(true);	// Let other threads know we're done w/ camera
+		return;							// If an error occured, end script
 	}
 }
 
@@ -766,9 +802,6 @@ class MainDialog : public finalcut::FDialog
 		std::thread camera_thread{};
 		// Declare the camera's thread variable so it'll be in all subequent functions' scope
 
-		std::atomic<StopType> last_stop_reason_{StopType::USER};
-		// Declare an atomic variable to handle returns from camera
-
 		void checkMinValue (int& n)
 		{
 			// Defines a function that ensures its input is always > 0
@@ -942,18 +975,20 @@ class MainDialog : public finalcut::FDialog
 					// camera_thread is thus our thread object, and the code in its () its content
 					// As input, we give a lambda function that tries out video function
 					try {
-						StopType result = VidStart(filename);
-						// Run our camera function, storing return value in "result"				
-		
-						last_stop_reason_.store(result);
-						// Save result to atomic last_stop_reason, so other threads can reference
+						VidStart(filename);		// Run camera function
 					} catch (std::exception const &e) {
-						last_stop_reason_.store(StopType::ERROR);
 						// Failsafe if VidStart() throws an error we didn't implement catches for
-
-						return;		// camera failed-- don't continue past here
+						{
+							std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
+							camera_stop_info = CameraStopInfo(
+								StopType::ERROR,
+								std::string("Unexpected exception: ") + e.what()
+							);
+							// NTS: Still don't get it
+						}
+						camera_finished.store(true);	// Let other threads know we're done w/ camera
 					}
-				}); 
+				});
 			} catch (std::exception const &e) {
 				// if statement failed-- for some reason, the camera thread wasn't created
 				status.setText(finalcut::FString("ERROR: Failed to initialize camera thread"));
@@ -972,49 +1007,16 @@ class MainDialog : public finalcut::FDialog
 		{
 			if (camera_thread.joinable()) {
 				// check if camera_thread is able to be closed:
-			
-				camera_thread.join();
-				// make sure camera thread has ended before continuing
+				stop_camera.store(true);	
+				//let camera know we want to stop
+
+				status.setText(finalcut::FString("Stopping..."));
+				// Give user an intermitten message so they know we're midprocess
+
+				status.redraw();
+				// redraw status (only status) to reflect our change
 				
-				camera_thread = std::thread();
-				// reset the thread (so it can be properly reused)
-				
-				status.stop();
-				// reset stopwatch
-	
-				StopType reason{last_stop_reason_.load()};
-				// get the stop reason:
-	
-				// change status text based on stop reason:
-				switch (reason)
-				{
-					case StopType::USER: // succesful operation
-						status.setText(finalcut::FString("Video saved as: ") 
-									   << finalcut::FString(std_filename));
-						break;	// exit switch
-					case StopType::TIMEOUT: // timeout
-						status.setText(finalcut::FString("MAX DURATION. Video saved as: ") 
-									   << finalcut::FString(std_filename));
-						break;	// exit switch
-					case StopType::ERROR: // video error
-						status.setText(finalcut::FString("ERROR: Recording failed"));
-						break;	// exit switch
-					default:	// unknown error (catch all)
-						status.setText(finalcut::FString("ERROR: Unknown stop reason"));
-						break;	// exit switch
-				}
-							
-				suggestion = filename_time();
-				// Get current date-time as suggested file name
-				
-				input.setText (finalcut::FString {suggestion});	//Need to convert type(?)
-				// set new suggested file name:
-				
-				confirmbutton.setText("Start Video");
-				// Change main button text to indicate changed functionality:
-				
-				stop_camera.store(false);
-				// now that we're all done, set flag to allow another recording:
+				// Leave rest for onuserEvent to handle			
 			}
 		}
 		
@@ -1037,13 +1039,122 @@ class MainDialog : public finalcut::FDialog
 			// Now however, updates are always done by parent-- hence one-line function
 			}
 		}
+
+		void onUserEvent(finalcut::FUserEvent* ev) override {
+			// onUserEvent is a default method that runs when FWidget is sent a user event
+			// Here, we override it to handle being sent camera status events (see below)
+
+			const auto* info = ev ->getData<CameraStopInfo>();
+			// Extract info about how camera stopped from the event
+			// NTS: Little confused by syntax
+
+			if (camera_thread.joinable()) {
+				// check if camera_thread is able to be closed:
+			
+				camera_thread.join();
+				// make sure camera thread has ended before continuing
+				
+				camera_thread = std::thread();
+				// reset the thread (so it can be properly reused)
+			}
+
+			status.stop();	// Stop the stopwatch
+
+			// change status text based on stop reason:
+			switch (info.type)
+			{
+				case StopType::USER: // succesful operation
+					status.setText(
+						finalcut::FString("Video saved as: ") + 
+						finalcut::FString(std_filename)
+						);
+					break;	// exit switch
+				case StopType::TIMEOUT: // timeout
+					status.setText(
+						finalcut::FString("MAX DURATION. Video saved as: ") +
+						finalcut::FString(std_filename)
+						);
+					break;	// exit switch
+				case StopType::ERROR: // video error
+					if (info.error_message.empty()) {
+						status.setText(finalcut::FString("ERROR: Recording failed"));
+						// Recording failed, but no error message (give generic)
+					} else {
+						status.setText(
+							finalcut::FString("ERROR: ") +
+							finalcut::FString(info.error_message)
+							);
+						// Recording failed, send message w/ error
+					}
+					break;	// either way, exit switch
+				default:	// unknown error (catch all)
+					status.setText(finalcut::FString("ERROR: Unknown stop reason"));
+					break;	// exit switch
+			}
+			// NTS: Check if std_filename is still O.K. Example changed it for a reason...
+
+			suggestion = filename_time();
+			// Get current date-time as suggested file name
+			
+			input.setText (finalcut::FString {suggestion});
+			// set new suggested file name:
+			
+			confirmbutton.setText("Start Video");
+			// Change main button text to indicate changed functionality:
+			
+			stop_camera.store(false);
+			// now that we're all done, set flag to allow another recording:
+
+			redraw();
+			// finally, redraw to account for all our changes
+			
+		}
 };
 
+class CameraApplication : public finalcut::FApplication {
+	// To handle getting updates based on camera status, need custom FApplication
+
+	public:
+		// All subsequent methods will be public
+		CameraApplication(const int& argc, char* argv[]) 
+			: finalcut :: FApplication(argc, argv) { }
+		// Copies constructor from main FApplication type
+		// NTS: Do we actually need this explicitly?
+
+	private:
+		// All subsequent methods will be private
+
+		void processExternalUserEvent() override {
+			// proocessExternalUserEvent() runs every FinalCut event loop
+			// We can thus override it for our camera status behaviour
+			if (camera_finished.load() && getMainWidget()) {
+				// Check camera is in finished state and MainDialog exists (safety check)
+				camera_finished.store(false);	// reset flag
+
+				CameraStopInfo info;
+				{
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					info = camera_stop_info;	// Make a copy to minimize lock time
+					// NTS: Guess who doesn't get this!
+				}
+
+				finalcut::FUserEvent user_event(finalcut::Event::User, 0);
+				// Creates a user event with ID 0
+				// NTS...
+
+				user_event.setData(info);
+				// Attach the info from our last camera stop to the event
+
+				finalcut::FApplication::sendEvent(getMainWidget(), &user_event);
+				// Send the event to main widget (MainDialog) for processing
+			}
+		}
+}
 
 auto main (int argc, char* argv[]) -> int
 {
-	finalcut::FApplication app{argc, argv};
-	// Create the main application object, which manages the Finalcut setup
+	CameraApplication app{argc, argv};
+	// Create the main application object, which manages the FinalCut setup
 
 	MainDialog dialog{&app};
 	// Create object of our custom dialog box class, w/ "dialog" as instance name
