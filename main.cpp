@@ -112,6 +112,7 @@ void VidStart(std::string const& name) {
 				app.StopEncoder();
 				EncoderOn = false;		// technically not needed, but safe practice
 			}
+			return true;				// let outer function know we were successful
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop encoder: " << e.what());
 			// Use LOG_ERROR() macro to send error to log/terminal (depending on how code is run)
@@ -121,8 +122,7 @@ void VidStart(std::string const& name) {
 			// (A macro can be an object/variable, function (as here), or conditional)
 			// (It speed up development by reusing code w/o function calls or explicit rewrites)
 			
-			throw std::runtime_error("Failed to stop encoder: " +std::string(e.what()));
-			// throw an error to trigger the catch of whatever larger function this is included in
+			return false;	// let outer function know we had issues
 		}
 	};
 
@@ -132,11 +132,11 @@ void VidStart(std::string const& name) {
 				app.StopCamera();
 				CameraOn = false;	//technically not needed, but safe practice
 			}
+			return true;				// let outer function know we were successful			
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop camera:"  << e.what());
 			
-			throw std::runtime_error("Failed to stop camera: " +std::string(e.what()));
-			// throw an error to trigger the catch of whatever larger function this is included in
+			return false;	// let outer function know we had issues
 		}
 	};
 	// The above are lambda functions (synonymous with anonymous function*)
@@ -187,6 +187,19 @@ void VidStart(std::string const& name) {
 
 		// Side-Note: Just to drill it in, when trying to access a class method:
 		// "->" is for pointers (like "options" here), while "." is for objects
+
+		const char* dummy_argv[] = {"program"};
+		int dummy_argc = 1;
+		// Create dummy versions of argc and argv (command-line inputs) for Parse()
+
+		if (!options->Parse(dummy_argc, const_cast<char**>(dummy_argv))) {
+			throw std::runtime_error("Failed to parse options");
+			// Parse takes our above options and validates, normalizes, and converts them
+			// In doing so, it prepares them to be properly used by the camera
+
+			// Side-Note: Parse expects an argv that is non-constant, while string literals are constant
+			// To deal with this, we use const_cast<char**> to temporarily remove constant protection
+		}
 
 
 		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
@@ -283,12 +296,8 @@ void VidStart(std::string const& name) {
 
 			if (msg.type == RPiCamApp::MsgType::Quit)  // Quit received
 			{
-				TryCameraOff();			// Try to end camera
-				TryEncoderOff();		// Try to end encoder
-
-				{
-					// the {} here creates a limited scope--
-					// variables declared inside only exist until the end of the block
+				if (!TryCameraOff() || !TryEncoderOff()) {
+					// Run our shutdown functions in if conditional so return can indicate errors
 					
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					// std::lock_guard is a wrapper for handling mutex locking
@@ -300,9 +309,14 @@ void VidStart(std::string const& name) {
 					// If we get here while another thread is in a scope w/ same mutex, 
 					// block (wait) that thread finishes its scope and unlocks mutex
 					
-					camera_stop_info = CameraStopInfo{StopType::USER, ""};
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
 					// All to (safely!) declare new values for camera_stop_info struct
+				} else {		
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{StopType::USER, ""};
+					// modify camera stop info in mutex
 				}
+				
 				camera_finished.store(true);	// Let event handler know we're done w/ camera
 				// .store() is the method for writing to atomic variable
 				
@@ -323,16 +337,19 @@ void VidStart(std::string const& name) {
 					// This is the exact method rpicam_vid.cpp uses, so its good enough for me!
 				}
 				catch (std::exception const &e) {
-					TryCameraOff();				// Try to end camera
-					TryEncoderOff();			// Try to end encoder
-					
-					{
+					if (!TryCameraOff() || !TryEncoderOff()) {
+						// Run our shutdown functions in if conditional so return can indicate errors
+						
+						std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+						camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+						// modify camera stop info in mutex
+					} else	{
 						std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 						camera_stop_info = CameraStopInfo{
 							StopType::ERROR,
 							std::string("Camera restart failed: ") + e.what()
+							// Modify camera_stop_info in mutex
 						};
-						// Modify camera_stop_info in mutex
 					}
 					camera_finished.store(true);	// Let event handler know we're done w/ camera
 					return;							// End loop early
@@ -341,10 +358,13 @@ void VidStart(std::string const& name) {
 			}
 			else if (msg.type != RPiCamApp::MsgType::RequestComplete)	// broad error check
 			{
-				TryCameraOff();				// Try to end camera
-				TryEncoderOff();			// Try to end encoder
-				
-				{
+				if (!TryCameraOff() || !TryEncoderOff()) {
+					// Run our shutdown functions in if conditional so return can indicate errors
+						
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+					// modify camera stop info in mutex
+				} else {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{
 						StopType::ERROR,
@@ -359,10 +379,13 @@ void VidStart(std::string const& name) {
 			auto now = std::chrono::high_resolution_clock::now();	// Get current time
 			if ((now - start_time) > options->timeout.value)	// If elapsed time > timeout
 			{
-				TryCameraOff();					// Try to end camera
-				TryEncoderOff();				// Try to end encoder
-				
-				{
+				if (!TryCameraOff() || !TryEncoderOff()) {
+						// Run our shutdown functions in if conditional so return can indicate errors
+						
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+					// modify camera stop info in mutex
+				} else {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{
 						StopType::TIMEOUT,
@@ -378,10 +401,13 @@ void VidStart(std::string const& name) {
 			{
 				//Note: .load() is the how you read an atomic variable
 				
-				TryCameraOff();				// Try to end camera
-				TryEncoderOff();			// Try to end encoder
-				
-				{
+				if (!TryCameraOff() || !TryEncoderOff()) {
+					// Run our shutdown functions in if conditional so return can indicate errors
+						
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+					// modify camera stop info in mutex
+				} else {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{
 						StopType::USER,
@@ -422,10 +448,13 @@ void VidStart(std::string const& name) {
 		// e is a constant reference, of type std::exception-- standard class for C++ errors
 		// Simply put, it's the corresponding error message for whatever failed in try.
 
-		TryCameraOff();			// Try to end camera
-		TryEncoderOff();		// Try to end encoder
-		
-		{
+		if (!TryCameraOff() || !TryEncoderOff()) {
+				// Run our shutdown functions in if conditional so return can indicate errors
+				
+			std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+			camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
+			// modify camera stop info in mutex
+		} else {
 			std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 			camera_stop_info = CameraStopInfo{
 				StopType::ERROR,
@@ -930,14 +959,7 @@ class MainDialog : public finalcut::FDialog
 			{
 				// Our click indicates we want to stop recording
 				
-				stop_camera.store(true);
-				// set stop camera flag
-
-				status.setText(finalcut::FString("Stopping..."));
-				// set temporary status text so user knows we're mid-process
-
-				status.redraw();
-				// redraw to reflect status text:
+				StopProtocol();
 			}
 			
 			// Regardless of above, perform updates:
