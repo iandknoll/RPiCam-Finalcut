@@ -22,6 +22,7 @@
 #include <atomic>					// Required for our global variable
 #include <thread>					// Required for threading
 #include <mutex>					// Required for thread syncronization
+#include <stdexcept>				// Required for throwing standard exceptions
 
 
 // GLOBALS
@@ -34,10 +35,9 @@ enum class StopType {
 // mainly for readability-- using here to have plaintext names for function returns
 
 struct CameraStopInfo {
-	StopType type;						// why did camera stop?
+	StopType type = StopType::ERROR;	// why did camera stop?
 	std::string error_message = "";		// error messages (if applicable)
-	
-}
+};
 // struct: user defined class for storing data of multiple types in one variable
 // a struct differs from a standard class in that members are public by default)
 // This means that you can directly access them from outside of the struct
@@ -51,8 +51,13 @@ static std::atomic<bool> camera_finished{false};	// flag to indicate camera stop
 // This is what we're doing here with the "std::atomic<bool>" part
 
 static std::mutex camera_stop_info_mutex;
+// declare an object of type std::mutex, to aid in thread synchronization
+// A mutex (short for mutual exclusion) is similar to a lock--
+// To access the resources/code protected by it, a thread must lock the mutex
+// In doing so, it prevents others threads from accessing until you unlock
+
 static CameraStopInfo camera_stop_info;
-//NTS: STILL DON'T GET THIS YET
+// declare a CameraStopInfo struct, filling with default placeholder values
 
 // CAMERA
 static int get_colourspace_flags(std::string const& codec) {
@@ -109,8 +114,15 @@ void VidStart(std::string const& name) {
 			}
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop encoder: " << e.what());
-			return;		// end function early
-			// NTS THIS RETURN IS AN ISSUE 
+			// Use LOG_ERROR() macro to send error to log/terminal (depending on how code is run)
+			// e.what() is a method for type std::exception to outputs error as a string pointer
+
+			// (Side-Note: A macro is a placeholder for preprocessor to replace before compilation)
+			// (A macro can be an object/variable, function (as here), or conditional)
+			// (It speed up development by reusing code w/o function calls or explicit rewrites)
+			
+			throw std::runtime_error("Failed to stop encoder: " +std::string(e.what()));
+			// throw an error to trigger the catch of whatever larger function this is included in
 		}
 	};
 
@@ -122,8 +134,9 @@ void VidStart(std::string const& name) {
 			}
 		} catch (std::exception const &e) {
 			LOG_ERROR("ERROR: Unable to stop camera:"  << e.what());
-			return; 	// end function early
-			// NTS THIS RETURN IS AN ISSUE 	
+			
+			throw std::runtime_error("Failed to stop camera: " +std::string(e.what()));
+			// throw an error to trigger the catch of whatever larger function this is included in
 		}
 	};
 	// The above are lambda functions (synonymous with anonymous function*)
@@ -221,6 +234,9 @@ void VidStart(std::string const& name) {
 		// using output.get()-- which tells it which method to use to route/write data--
 		// and the four aformentioned frame parameters as inputs."
 
+		// Side-Note: A wrapper is a class/function that "encapsulates" another class/function
+		// It can provide alternative interfaces, added functionality, or resource management
+
 		app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(), 
 			std::placeholders::_1));
 		// Roughly the same idea as the prior line of code, only handling metadata--
@@ -271,11 +287,23 @@ void VidStart(std::string const& name) {
 				TryEncoderOff();		// Try to end encoder
 
 				{
-					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
-					camera_stop_info = CameraStopInfo(StopType::USER, "");
-					// NTS: DON'T GET THIS YET EITHER
+					// the {} here creates a limited scope--
+					// variables declared inside only exist until the end of the block
+					
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					// std::lock_guard is a wrapper for handling mutex locking
+					// <std::mutex> specifies the behaviour we want, based on mutex type
+					// It will run the lock method on camera_stop_info_mutex for us
+					// We use it instead of manually locking for its extra functionality--
+					// Namely, it automatically unlocks once destroyed / out of scope.
+					// Pattern of limited scope w/ mutex lock at start means:
+					// If we get here while another thread is in a scope w/ same mutex, 
+					// block (wait) that thread finishes its scope and unlocks mutex
+					
+					camera_stop_info = CameraStopInfo{StopType::USER, ""};
+					// All to (safely!) declare new values for camera_stop_info struct
 				}
-				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				camera_finished.store(true);	// Let event handler know we're done w/ camera
 				// .store() is the method for writing to atomic variable
 				
 				return;	// End loop early
@@ -295,21 +323,18 @@ void VidStart(std::string const& name) {
 					// This is the exact method rpicam_vid.cpp uses, so its good enough for me!
 				}
 				catch (std::exception const &e) {
-					LOG_ERROR("ERROR: Camera restart failed: " << e.what());
-					// Log the issue in terminal/log file (depending on how program ran)
-	
 					TryCameraOff();				// Try to end camera
 					TryEncoderOff();			// Try to end encoder
 					
 					{
-						std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
-						camera_stop_info = CameraStopInfo(
+						std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+						camera_stop_info = CameraStopInfo{
 							StopType::ERROR,
 							std::string("Camera restart failed: ") + e.what()
-						);
-						// NTS: DON'T GET THIS YET EITHER
+						};
+						// Modify camera_stop_info in mutex
 					}
-					camera_finished.store(true);	// Let other threads know we're done w/ camera
+					camera_finished.store(true);	// Let event handler know we're done w/ camera
 					return;							// End loop early
 				}
 				continue;	// Camera succesfully restarted, continue as normal
@@ -320,14 +345,14 @@ void VidStart(std::string const& name) {
 				TryEncoderOff();			// Try to end encoder
 				
 				{
-					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
-					camera_stop_info = CameraStopInfo(
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{
 						StopType::ERROR,
 						"Unexpected message type received"
-					);
-					// NTS: DON'T GET THIS YET EITHER
+					};
+					// Modify camera_stop_info in mutex
 				}
-				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				camera_finished.store(true);	// Let event handler know we're done w/ camera
 				return;							// End loop early
 			}
 
@@ -338,14 +363,14 @@ void VidStart(std::string const& name) {
 				TryEncoderOff();				// Try to end encoder
 				
 				{
-					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
-					camera_stop_info = CameraStopInfo(
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{
 						StopType::TIMEOUT,
 						""
-					);
-					// NTS: DON'T GET THIS YET EITHER
+					};
+					// Modify camera_stop_info in mutex
 				}
-				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				camera_finished.store(true);	// Let event handler know we're done w/ camera
 				return;							// End loop early
 			}
 
@@ -357,14 +382,14 @@ void VidStart(std::string const& name) {
 				TryEncoderOff();			// Try to end encoder
 				
 				{
-					std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
-					camera_stop_info = CameraStopInfo(
+					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+					camera_stop_info = CameraStopInfo{
 						StopType::USER,
 						""
-					);
-					// NTS: DON'T GET THIS YET EITHER
+					};
+					// Modify camera_stop_info in mutex
 				}
-				camera_finished.store(true);	// Let other threads know we're done w/ camera
+				camera_finished.store(true);	// Let event handler know we're done w/ camera
 				return;							// End loop early
 			}
 			
@@ -400,23 +425,15 @@ void VidStart(std::string const& name) {
 		TryCameraOff();			// Try to end camera
 		TryEncoderOff();		// Try to end encoder
 		
-		LOG_ERROR("ERROR: *** " << e.what() << " ***");
-		// Use LOG_ERROR() macro to send error to log/terminal (depending on how code is run)
-		// e.what() is a method for type std::exception to outputs error as a string pointer
-
-		// (Side-Note: A macro is a placeholder for preprocessor to replace before compilation)
-		// (A macro can be an object/variable, function (as here), or conditional)
-		// (It speed up development by reusing code w/o function calls or explicit rewrites)
-
 		{
-			std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
-			camera_stop_info = CameraStopInfo(
+			std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+			camera_stop_info = CameraStopInfo{
 				StopType::ERROR,
 				std::string("Exception: ") + e.what()
-			);
-			// NTS: DON'T GET THIS YET EITHER
+			};
+			// Modify camera_stop_info in mutex
 		}
-		camera_finished.store(true);	// Let other threads know we're done w/ camera
+		camera_finished.store(true);	// Let event handler know we're done w/ camera
 		return;							// If an error occured, end script
 	}
 }
@@ -793,9 +810,6 @@ class MainDialog : public finalcut::FDialog
 		bool showYesNo{false};
 		// Define a boolean to handle what button set is currently visible
 		
-		std::string suggestion{filename_time()};
-		// Declare variable for input text so it'll be in all subsequent functions' scope
-		
 		std::string std_filename{};
 		// Declare the filename variable so it'll be in all subsequent functions' scope
 		
@@ -979,14 +993,14 @@ class MainDialog : public finalcut::FDialog
 					} catch (std::exception const &e) {
 						// Failsafe if VidStart() throws an error we didn't implement catches for
 						{
-							std::lock_guard<std:mutex> lock(camera_stop_info_mutex);
-							camera_stop_info = CameraStopInfo(
+							std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
+							camera_stop_info = CameraStopInfo{
 								StopType::ERROR,
 								std::string("Unexpected exception: ") + e.what()
-							);
-							// NTS: Still don't get it
+							};
+							// Modify camera_stop_info in mutex
 						}
-						camera_finished.store(true);	// Let other threads know we're done w/ camera
+						camera_finished.store(true);	// Let event handler know we're done w/ camera
 					}
 				});
 			} catch (std::exception const &e) {
@@ -1044,9 +1058,11 @@ class MainDialog : public finalcut::FDialog
 			// onUserEvent is a default method that runs when FWidget is sent a user event
 			// Here, we override it to handle being sent camera status events (see below)
 
-			const auto* info = ev ->getData<CameraStopInfo>();
+			const auto& info = ev ->getData<CameraStopInfo>();
 			// Extract info about how camera stopped from the event
-			// NTS: Little confused by syntax
+			// const auto* info gives us a reference ("info") of compiler deduced type
+			// Does this by accessing getData method of finalcut::FUserEvent ev points to
+			// <CameraStopInfo> just speciies what type of data we want (can be multiple)
 
 			if (camera_thread.joinable()) {
 				// check if camera_thread is able to be closed:
@@ -1091,13 +1107,10 @@ class MainDialog : public finalcut::FDialog
 					status.setText(finalcut::FString("ERROR: Unknown stop reason"));
 					break;	// exit switch
 			}
-			// NTS: Check if std_filename is still O.K. Example changed it for a reason...
+			// Use of std_filename here likely still works, but it's clunky and not best practice
 
-			suggestion = filename_time();
-			// Get current date-time as suggested file name
-			
-			input.setText (finalcut::FString {suggestion});
-			// set new suggested file name:
+			input.setText (finalcut::FString {filename_time()});
+			// set new suggested file name as current datetime
 			
 			confirmbutton.setText("Start Video");
 			// Change main button text to indicate changed functionality:
@@ -1117,9 +1130,9 @@ class CameraApplication : public finalcut::FApplication {
 	public:
 		// All subsequent methods will be public
 		CameraApplication(const int& argc, char* argv[]) 
-			: finalcut :: FApplication(argc, argv) { }
+			: finalcut::FApplication(argc, argv) { }
 		// Copies constructor from main FApplication type
-		// NTS: Do we actually need this explicitly?
+		// Derived classes do *not* automatically inhert constructors!
 
 	private:
 		// All subsequent methods will be private
@@ -1131,25 +1144,28 @@ class CameraApplication : public finalcut::FApplication {
 				// Check camera is in finished state and MainDialog exists (safety check)
 				camera_finished.store(false);	// reset flag
 
-				CameraStopInfo info;
+				CameraStopInfo info;	// declare new CameraStopInfo struct
 				{
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
-					info = camera_stop_info;	// Make a copy to minimize lock time
-					// NTS: Guess who doesn't get this!
+					info = camera_stop_info;
+					// Access our camera_stop_info for read purposes
+					// To keep mutex locked for as little as possible, copy camera_stop_info
+					// This will let us work w/ the copied values after scope is over
 				}
 
 				finalcut::FUserEvent user_event(finalcut::Event::User, 0);
 				// Creates a user event with ID 0
-				// NTS...
+				// We need this user event to take advanatage of onUserEvent()
 
 				user_event.setData(info);
 				// Attach the info from our last camera stop to the event
 
 				finalcut::FApplication::sendEvent(getMainWidget(), &user_event);
 				// Send the event to main widget (MainDialog) for processing
+				// Doing so will trigget onUserEvent()
 			}
 		}
-}
+};
 
 auto main (int argc, char* argv[]) -> int
 {
