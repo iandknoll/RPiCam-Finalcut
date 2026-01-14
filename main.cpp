@@ -103,7 +103,7 @@ void VidStart(std::string const& name) {
 		int dummy_argc = 1;
 
 		if (!options->Parse(dummy_argc, const_cast<char**>(dummy_argv))) {
-			throw std::runtime_error("Failed to parse options")
+			throw std::runtime_error("Failed to parse options");
 		}
 		
 		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
@@ -189,7 +189,7 @@ void VidStart(std::string const& name) {
 			auto now = std::chrono::high_resolution_clock::now();
 			if ((now - start_time) > options->timeout.value)
 			{
-				if (!() || !TryEncoderOff()) {
+				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
 				} else {
@@ -205,7 +205,7 @@ void VidStart(std::string const& name) {
 
 			if (stop_camera.load())
 			{				
-				if (!() || !TryEncoderOff()) {
+				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
 				} else {
@@ -226,7 +226,7 @@ void VidStart(std::string const& name) {
 	}
 	catch (std::exception const &e)
 	{
-		if (!() || !TryEncoderOff()) {
+		if (!TryCameraOff() || !TryEncoderOff()) {
 			std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 			camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
 		} else {
