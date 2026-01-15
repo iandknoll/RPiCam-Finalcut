@@ -32,7 +32,7 @@ else
 endif
 
 # Libraries and linkers
-LDFLAGS := -L./$(RPICAM_BUILD_DIR) \
+LDFLAGS := -L$(RPICAM_BUILD_DIR) \
            -lrpicam_app \
            -pthread -ldl
 
@@ -40,7 +40,7 @@ LDFLAGS := -L./$(RPICAM_BUILD_DIR) \
 # Default target (what will run w/o modifiers)
 # -----------------------------------------------------
 
-all: $(TARGET)
+all: check-deps $(TARGET)
 
 # ------------------------------------
 # Build rpicam-apps submodule
@@ -78,11 +78,11 @@ $(TARGET): rpicam-apps $(SOURCE)
 
 # To use: "make debug"
 debug:
-	${MAKE} DEBUG=1
+	$(MAKE) DEBUG=1
 
 # To use: "make release"
 release:
-	${MAKE} DEBUG=0
+	$(MAKE) DEBUG=0
 
 # -------------------------------------------------------
 # Verify dependencies are present
@@ -101,6 +101,8 @@ check-deps:
 
 	@pkg-config --exists libcamera || \
                 (echo "Missing dependency: libcamera-dev"; exit 1)
+	@pkg-config --exists boost || \
+                (echo "Missing dependency: libboost-all-dev"; exit 1)
 	@pkg-config --exists libdrm || \
                 (echo "Missing dependency: libdrm-dev"; exit 1)
 	@pkg-config --exists libexif || \
@@ -110,9 +112,23 @@ check-deps:
 	@pkg-config --exists libjpeg || \
                 (echo "Missing dependency: libjpeg-dev"; exit 1)
 	@pkg-config --exists libtiff-4 || \
-                (echo "Missing dependency: libtiff5-dev";exit 1)
+                (echo "Missing dependency: libtiff5-dev"; exit 1)
 
 	@echo "All required dependencies are installed."
+
+# -------------------------------------------------------
+# help function
+# -------------------------------------------------------
+
+# To use: "make help"
+help:
+	@echo "Available targets:"
+	@echo "  make				- Build (release)"
+	@echo "  make debug			- Debug build"
+	@echo "  make run			- Run the program"
+	@echo "  make clean			- Remove local build artifacts"
+	@echo "  make distclean		- Remove rpicam-apps build"
+	@echo "  make check-deps	- Verify dependencies"
 
 # --------------------------------------------------------
 # Run program (w/ proper library path)
@@ -133,7 +149,8 @@ clean:
 	rm -f $(TARGET)
 
 # To use: "make distclean"
-distclean: cleany
+distclean: clean
+	@echo "Removing rpicam-apps build..."
 	rm -rf $(RPICAM_BUILD_DIR)
 
 # --------------------------------------------------------
@@ -149,4 +166,4 @@ rebuild: clean all
 
 # Defines all run conditions
 # (i.e. what we can include after "make")
-.PHONY: all rpicam-apps debug release run clean distclean rebuild check-deps
+.PHONY: all rpicam-apps debug release run clean distclean rebuild check-deps help
