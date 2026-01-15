@@ -18,7 +18,7 @@ Note: libdrm-dev is still required for build (even with -Ddrm=disable in Meson) 
 To verify dependencies, run "make check-deps" from project root.
 
 To Build (assuming default Raspberry Pi OS Bookworm):
-Clone Repo. then run "make" from project root
+Clone Repo as git clone --recursive https://github.com/iandknoll/RPiCam-Finalcut.git . then run "make" from project root
 -- For debug build: "make debug"
 -- To clean build artifacts: "make clean"
 -- To remove entire build: "make distclean"
