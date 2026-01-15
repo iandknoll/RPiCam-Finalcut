@@ -19,9 +19,15 @@ RPICAM_BUILD_DIR = $(RPICAM_DIR)/build
 # Compiler
 CXX := g++
 
+# pkg-cnfoig flags
+LIBCAMERA_CFLAGS := $(shell pkg-config --cflags libcamera)
+LIBCAMERA_LIBS   := $(shell pkg-config --libs libcamera)
+
 # Compiler flags
 CXXFLAGS := -std=c++17 \
-            -I$(RPICAM_BUILD_DIR)/include
+            -I$(RPICAM_DIR)\
+            -I$(RPICAM_BUILD_DIR)/include \
+            $(LIBCAMERA_CFLAGS)
 
 # Additional Compiler flags (if DEBUG=1 set)
 ifeq ($(DEBUG),1)
@@ -34,6 +40,7 @@ endif
 # Libraries and linkers
 LDFLAGS := -L$(RPICAM_BUILD_DIR) \
            -lrpicam_app \
+           $(LIBCAMERA_LIBS) \
            -pthread -ldl
 
 # -------------------------------------------------------------------------------------------
@@ -57,7 +64,7 @@ rpicam-apps:
 	@echo "Building rpicam-apps submodule..."
 	@if [ ! -d "$(RPICAM_BUILD_DIR)" ]; then \
 		cd $(RPICAM_DIR) && meson setup build \
-			-Deql=disable -Ddrm=disable -Dqt=disable; \
+			-Denable_egl=disabled -Denable_drm=disabled -Denable_qt=disabled; \
 	else \
 		cd $(RPICAM_DIR) && meson setup build --reconfigure; \
 	fi
