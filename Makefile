@@ -101,7 +101,7 @@ check-deps:
 
 	@pkg-config --exists libcamera || \
                 (echo "Missing dependency: libcamera-dev"; exit 1)
-	@pkg-config --exists boost || \
+	@dpkg -s libboost-all-dev >/dev/null 2>&1 || \
                 (echo "Missing dependency: libboost-all-dev"; exit 1)
 	@pkg-config --exists libdrm || \
                 (echo "Missing dependency: libdrm-dev"; exit 1)
