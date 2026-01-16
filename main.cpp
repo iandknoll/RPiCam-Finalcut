@@ -84,27 +84,39 @@ void VidStart(std::string const& name) {
 	try
 	{
 		VideoOptions *options = app.GetOptions();
-		
-		const char* dummy_argv[] = {"program"};
-		int dummy_argc = 1;
 
-		if (!options->Parse(dummy_argc, const_cast<char**>(dummy_argv))) {
+		// Build argv array w/ options
+		// Adjust these values according to your own needs:
+		std::vector<std::string> args = {
+			"program",					// argv format requires a program name as first entry
+			"--output", name,			// file name
+			"--timeout", "40min",		// MAX recording time
+			"--codec", "h264",			// codec for video encoding/decoding
+			"--profile", "baseline",	// Compression profile
+			"--framerate", "240",		// fps goal
+			"--width", "800",			// frame width (in pixels)
+			"--height", "800",			// frame height (in pixels)
+			"--awbgains", "2,2",		// disable auto white balance
+			"--shutter", "3000us",		// Shutter speed (us)
+			"--gain", "2",				// analog gain
+			"--denoise", "cdn_off",		// turn off color denoise (for fps)
+			"--nopreview"				// turn off preview (for fps)
+		};
+
+		std::vector<char*> argv;
+		// Declare a vector array for type char*
+		for (auto& arg: args) {
+			argv.push_back(const_char<char*>(arg.c_str()));
+		}
+		// Parse() method expects a char* array
+		// To get this, go through each entry in the args string array:
+		// For each entry, we first convert to C-style const char* w/ c_str()
+		// Then remove the const qualifier with const_cast<char*>
+		// Finally, store as next entry in our vector array w/ .push_back()
+
+		if (!options->Parse(argv.size(), argv.data())) {
 			throw std::runtime_error("Failed to parse options");
 		}
-		
-		// Adjust these values according to your own needs:
-		options->output = name; 				// file name (here our input)
-		options->timeout.set("40min"); 			// MAX Recording time
-		options->codec  = "h264";				// codec for video encoding/decoding
-		options->profile = "baseline";  		// Compression profile
-		options->framerate = 240.0f;				// fps
-		options->width = 800;					// frame width (in pixels)
-		options->height = 800;					// frame height (in pixels)
-		options->awbgains = "2,2";				// disable automatic white balance
-		options->shutter.set("3000us");			// Shutter speed (us)
-		options->gain = 2;						// analog gain
-		options->denoise = "cdn_off"; 			// turns off color denoise (for fps)
-		options->nopreview = true;				// turns off preview (for fps)
 		
 		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
 
