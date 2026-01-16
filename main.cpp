@@ -1,8 +1,6 @@
 // CAMERA DEPENDENCIES
 #include "core/rpicam_encoder.hpp"
 #include "core/logging.hpp"
-#include "core/options.hpp"			// Base Options class
-#include "core/video_options.hpp"	// VideoOptions derived class
 #include "output/output.hpp"
 #include <functional>
 #include <memory>
@@ -139,7 +137,7 @@ void VidStart(std::string const& name) {
 		options->Get("codec", codec);
 		// Get our codec from options, then save it to codec object
 		
-		app.ConfigureVideo(get_colourspace_flags(codec));
+		app.ConfigureVideo(get_colourspace_flags(options->Get().codec));
 		
 		app.StartEncoder();
 		EncoderOn = true;
@@ -213,7 +211,7 @@ void VidStart(std::string const& name) {
 			}
 
 			auto now = std::chrono::high_resolution_clock::now();
-			if ((now - start_time) > timeout.value)
+			if ((now - start_time) > options->Get().timeout.value)
 			{
 				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
