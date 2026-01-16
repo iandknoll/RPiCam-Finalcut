@@ -1,3 +1,6 @@
 [submodule "rpicam-apps"]
 	path = rpicam-apps
 	url = https://github.com/raspberrypi/rpicam-apps.git
+[submodule "finalcut"]
+	path = finalcut
+	url = https://github.com/gansm/finalcut.git
