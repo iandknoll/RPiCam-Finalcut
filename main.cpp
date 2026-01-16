@@ -106,7 +106,7 @@ void VidStart(std::string const& name) {
 		std::vector<char*> argv;
 		// Declare a vector array for type char*
 		for (auto& arg: args) {
-			argv.push_back(const_char<char*>(arg.c_str()));
+			argv.push_back(const_cast<char*>(arg.c_str()));
 		}
 		// Parse() method expects a char* array
 		// To get this, go through each entry in the args string array:
