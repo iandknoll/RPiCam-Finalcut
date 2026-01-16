@@ -130,12 +130,12 @@ check-deps:
 # To use: "make help"
 help:
 	@echo "Available targets:"
-	@echo "  make				- Build (release)"
-	@echo "  make debug			- Debug build"
-	@echo "  make run			- Run the program"
-	@echo "  make clean			- Remove local build artifacts"
-	@echo "  make distclean		- Remove rpicam-apps build"
-	@echo "  make check-deps	- Verify dependencies"
+	@echo "  make               - Build (release)"
+	@echo "  make debug	        - Debug build"
+	@echo "  make run           - Run the program"
+	@echo "  make clean         - Remove local build artifacts"
+	@echo "  make distclean     - Remove rpicam-apps build"
+	@echo "  make check-deps    - Verify dependencies"
 
 # -------------------------------------------------------------------------------------------
 # Run program (w/ proper library path)
