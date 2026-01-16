@@ -88,7 +88,7 @@ finalcut:
 		mkdir -p $(FINALCUT_BUILD_DIR) && \
 		cd $(FINALCUT_DIR) &&  \
 		autoreconf --install --force && \
-		cd $(FINALCUT_BUILD_DIR) && \
+		cd build && \
 		../configure --prefix=$(abspath $(FINALCUT_BUILD_DIR)) && \
 		make && make install; \
 	else \
