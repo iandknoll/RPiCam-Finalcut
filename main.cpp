@@ -161,7 +161,7 @@ void VidStart(std::string const& name) {
 		TimeVal<std::chrono::milliseconds> timeout;
 		// Declare "TimeVal<std::chrono::milliseconds>" object to hold our timeout
 
-		options->Get("timeout", timeout)
+		options->Get("timeout", timeout);
 		// Get our timeout from options, then save it to timeout object
 
 		for (;;)
