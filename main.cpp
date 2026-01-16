@@ -87,6 +87,15 @@ void VidStart(std::string const& name) {
 	{
 		VideoOptions *options = app.GetOptions();
 
+		// DEBUG
+		// Test 1: Check the type  
+		static_assert(std::is_same_v<decltype(options), VideoOptions*>,   
+               "GetOptions() should return VideoOptions*");  
+  
+		// Test 2: Check inheritance  
+		static_assert(std::is_base_of_v<Options, VideoOptions>,   
+               "VideoOptions should inherit from Options");  
+
 		// Build argv array w/ options
 		// Adjust these values according to your own needs:
 		std::vector<std::string> args = {
@@ -132,8 +141,14 @@ void VidStart(std::string const& name) {
 			std::placeholders::_1));
 		
 		app.OpenCamera();
+
+		std::string codec;
+		// Declare a string to hold our codec choice
 		
-		app.ConfigureVideo(get_colourspace_flags(options->codec));
+		options->Get("codec", codec);
+		// Get our codec from options, then save it to codec object
+		
+		app.ConfigureVideo(get_colourspace_flags(codec));
 		
 		app.StartEncoder();
 		EncoderOn = true;
@@ -142,6 +157,12 @@ void VidStart(std::string const& name) {
 		CameraOn = true;
 
 		auto start_time = std::chrono::high_resolution_clock::now();
+
+		TimeVal<std::chrono::milliseconds> timeout;
+		// Declare "TimeVal<std::chrono::milliseconds>" object to hold our timeout
+
+		options->Get("timeout", timeout)
+		// Get our timeout from options, then save it to timeout object
 
 		for (;;)
 		{
@@ -201,7 +222,7 @@ void VidStart(std::string const& name) {
 			}
 
 			auto now = std::chrono::high_resolution_clock::now();
-			if ((now - start_time) > options->timeout.value)
+			if ((now - start_time) > timeout.value)
 			{
 				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
