@@ -130,12 +130,6 @@ void VidStart(std::string const& name) {
 			std::placeholders::_1));
 		
 		app.OpenCamera();
-
-		std::string codec;
-		// Declare a string to hold our codec choice
-		
-		options->Get("codec", codec);
-		// Get our codec from options, then save it to codec object
 		
 		app.ConfigureVideo(get_colourspace_flags(options->Get().codec));
 		
@@ -144,14 +138,6 @@ void VidStart(std::string const& name) {
 
 		app.StartCamera();
 		CameraOn = true;
-
-		auto start_time = std::chrono::high_resolution_clock::now();
-
-		TimeVal<std::chrono::milliseconds> timeout;
-		// Declare "TimeVal<std::chrono::milliseconds>" object to hold our timeout
-
-		options->Get("timeout", timeout);
-		// Get our timeout from options, then save it to timeout object
 
 		for (;;)
 		{
