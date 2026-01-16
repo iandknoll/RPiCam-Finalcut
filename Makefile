@@ -16,6 +16,9 @@ TARGET := Reaching_Cam
 RPICAM_DIR = rpicam-apps
 RPICAM_BUILD_DIR = $(RPICAM_DIR)/build
 
+FINALCUT_DIR = finalcut
+FINALCUT_BUILD_DIR = $(FINALCUT_DIR)/build
+
 # Compiler
 CXX := g++
 
@@ -27,7 +30,8 @@ LIBCAMERA_LIBS   := $(shell pkg-config --libs libcamera)
 CXXFLAGS := -std=c++17 \
             -I$(RPICAM_DIR)\
             -I$(RPICAM_BUILD_DIR)/include \
-            $(LIBCAMERA_CFLAGS)
+            $(LIBCAMERA_CFLAGS) \
+            -I$(FINALCUT_BUILD_DIR)/include
 
 # Additional Compiler flags (if DEBUG=1 set)
 ifeq ($(DEBUG),1)
@@ -41,7 +45,7 @@ endif
 LDFLAGS := -L$(RPICAM_BUILD_DIR) \
            -lrpicam_app \
            $(LIBCAMERA_LIBS) \
-           -lfinalcut \
+           -L$(FINALCUT_BUILD_DIR)/lib -lfinalcut \
            -lboost_program_options \
            -pthread -ldl
 
@@ -73,11 +77,30 @@ rpicam-apps:
 	cd $(RPICAM_DIR) && ninja -C build
 
 # -------------------------------------------------------------------------------------------
+# Build FinalCut submodule
+# -------------------------------------------------------------------------------------------
+
+# To use: "make finalcut"
+
+finalcut:
+	@echo "Building finalcut submodule..."
+	@if [ ! -d "$(FINALCUT_BUILD_DIR)" ]; then \
+		mkdir -p $(FINALCUT_BUILD_DIR) && \
+		cd $(FINALCUT_DIR) &&  \
+		autoreconf --install --force && \
+		cd $(FINALCUT_BUILD_DIR) && \
+		../configure --prefix=$(abspath $(FINALCUT_BUILD_DIR)) && \
+		make && make install; \
+	else \
+		echo "FinalCut already built"; \
+	fi
+
+# -------------------------------------------------------------------------------------------
 # Build main program
 # -------------------------------------------------------------------------------------------
 
 # To use: "make"
-$(TARGET): rpicam-apps $(SOURCE)
+$(TARGET): rpicam-apps finalcut $(SOURCE)
 	@echo "Building $(TARGET)..."
 	$(CXX) $(CXXFLAGS) $(SOURCE) -o $(TARGET) $(LDFLAGS)
 
@@ -136,7 +159,7 @@ help:
 	@echo "  make debug         - Debug build"
 	@echo "  make run           - Run the program"
 	@echo "  make clean         - Remove local build artifacts"
-	@echo "  make distclean     - Remove rpicam-apps build"
+	@echo "  make distclean     - Remove rpicam-apps & finalcut build"
 	@echo "  make check-deps    - Verify dependencies"
 
 # -------------------------------------------------------------------------------------------
@@ -146,7 +169,7 @@ help:
 # To use: "make run"
 run: $(TARGET)
 	@echo "Running $(TARGET)..."
-	LD_LIBRARY_PATH=$(RPICAM_BUILD_DIR) ./$(TARGET)
+	LD_LIBRARY_PATH=$(RPICAM_BUILD_DIR):$(FINALCUT_BUILD_DIR)/lib ./$(TARGET)
 
 # -------------------------------------------------------------------------------------------
 # Cleanup
@@ -161,6 +184,8 @@ clean:
 distclean: clean
 	@echo "Removing rpicam-apps build..."
 	rm -rf $(RPICAM_BUILD_DIR)
+	@echo "Removing finalcut build..."
+	rm -rf $(FINALCUT_BUILD_DIR)
 
 # -------------------------------------------------------------------------------------------
 # Force rebuild everything (runs both clean, then build)
@@ -170,9 +195,9 @@ distclean: clean
 rebuild: clean all
 
 # -------------------------------------------------------------------------------------------
-# Phony targets (???)
+# Phony targets
 # -------------------------------------------------------------------------------------------
 
 # Defines all run conditions
 # (i.e. what we can include after "make")
-.PHONY: all rpicam-apps debug release run clean distclean rebuild check-deps help
+.PHONY: all rpicam-apps finalcut debug release run clean distclean rebuild check-deps help
