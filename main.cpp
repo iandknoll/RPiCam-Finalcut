@@ -85,12 +85,19 @@ void VidStart(std::string const& name) {
 	{
 		VideoOptions *options = app.GetOptions();
 		
+		const char* dummy_argv[] = {"program"};
+		int dummy_argc = 1;
+
+		if (!options->Parse(dummy_argc, const_cast<char**>(dummy_argv))) {
+			throw std::runtime_error("Failed to parse options");
+		}
+		
 		// Adjust these values according to your own needs:
 		options->output = name; 				// file name (here our input)
 		options->timeout.set("40min"); 			// MAX Recording time
 		options->codec  = "h264";				// codec for video encoding/decoding
 		options->profile = "baseline";  		// Compression profile
-		options->framerate = 240;				// fps
+		options->framerate = 240.0f;				// fps
 		options->width = 800;					// frame width (in pixels)
 		options->height = 800;					// frame height (in pixels)
 		options->awbgains = "2,2";				// disable automatic white balance
@@ -98,13 +105,6 @@ void VidStart(std::string const& name) {
 		options->gain = 2;						// analog gain
 		options->denoise = "cdn_off"; 			// turns off color denoise (for fps)
 		options->nopreview = true;				// turns off preview (for fps)
-
-		const char* dummy_argv[] = {"program"};
-		int dummy_argc = 1;
-
-		if (!options->Parse(dummy_argc, const_cast<char**>(dummy_argv))) {
-			throw std::runtime_error("Failed to parse options");
-		}
 		
 		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
 
