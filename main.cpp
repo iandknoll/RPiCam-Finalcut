@@ -426,8 +426,8 @@ class Stopwatch : public finalcut::FLabel
 			auto now = std::chrono::steady_clock::now();
 			auto elapsed = now - start_time;
 			auto total_seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed);
-			int minutes{(total_seconds.count() % 3600) / 60};
-			int seconds{total_seconds.count() % 60};
+			int minutes{static_cast<int>(total_seconds.count() % 3600) / 60};
+			int seconds{static_cast<int>(total_seconds.count() % 60)};
 			
 			finalcut::FString time_str;
 			time_str.sprintf("Run Time: %02d:%02d", minutes, seconds);
