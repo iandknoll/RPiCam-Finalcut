@@ -41,6 +41,7 @@ endif
 LDFLAGS := -L$(RPICAM_BUILD_DIR) \
            -lrpicam_app \
            $(LIBCAMERA_LIBS) \
+           -lboost_program_options \
            -pthread -ldl
 
 # -------------------------------------------------------------------------------------------
