@@ -1,6 +1,8 @@
 // CAMERA DEPENDENCIES
 #include "core/rpicam_encoder.hpp"
 #include "core/logging.hpp"
+#include "core/options.hpp"			// Base Options class
+#include "core/video_options.hpp"	// VideoOptions derived class
 #include "output/output.hpp"
 #include <functional>
 #include <memory>
