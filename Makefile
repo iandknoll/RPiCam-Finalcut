@@ -69,7 +69,7 @@ rpicam-apps:
 
 	@echo "Building rpicam-apps submodule..."
 	@if [ ! -d "$(RPICAM_BUILD_DIR)" ]; then \
-		cd $(RPICAM_DIR) && meson setup build $(RPICAM_DIR) \
+		cd $(RPICAM_DIR) && meson setup build \
 			-Denable_egl=disabled -Denable_drm=disabled -Denable_qt=disabled; \
 	else \
 		cd $(RPICAM_DIR) && meson setup build --reconfigure; \
