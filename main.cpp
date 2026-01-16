@@ -87,15 +87,6 @@ void VidStart(std::string const& name) {
 	{
 		VideoOptions *options = app.GetOptions();
 
-		// DEBUG
-		// Test 1: Check the type  
-		static_assert(std::is_same_v<decltype(options), VideoOptions*>,   
-               "GetOptions() should return VideoOptions*");  
-  
-		// Test 2: Check inheritance  
-		static_assert(std::is_base_of_v<Options, VideoOptions>,   
-               "VideoOptions should inherit from Options");  
-
 		// Build argv array w/ options
 		// Adjust these values according to your own needs:
 		std::vector<std::string> args = {
