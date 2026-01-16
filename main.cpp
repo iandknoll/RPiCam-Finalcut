@@ -130,6 +130,8 @@ void VidStart(std::string const& name) {
 			std::placeholders::_1));
 		
 		app.OpenCamera();
+
+		auto start_time = std::chrono::high_resolution_clock::now();
 		
 		app.ConfigureVideo(get_colourspace_flags(options->Get().codec));
 		
