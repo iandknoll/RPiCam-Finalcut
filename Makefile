@@ -84,12 +84,12 @@ rpicam-apps:
 
 finalcut:
 	@echo "Building finalcut submodule..."
-	@if [ ! -d "$(FINALCUT_BUILD_DIR)" ]; then \
-		mkdir -p $(FINALCUT_BUILD_DIR) && \
-		cd $(FINALCUT_DIR) &&  \
+	@cd $(FINALCUT_DIR) && \
+	if [ ! -d "build" ]; then \
+		mkdir build && \
 		autoreconf --install --force && \
 		cd build && \
-		../configure --prefix=$(abspath $(FINALCUT_BUILD_DIR)) && \
+		../configure --prefix=$$(pwd) && \
 		make && make install; \
 	else \
 		echo "FinalCut already built"; \
