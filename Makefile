@@ -24,7 +24,7 @@ FINALCUT_STAMP = $(FINALCUT_BUILD_DIR)/built
 # Compiler
 CXX := g++
 
-# pkg-cnfoig flags
+# pkg-config flags
 LIBCAMERA_CFLAGS := $(shell pkg-config --cflags libcamera)
 LIBCAMERA_LIBS   := $(shell pkg-config --libs libcamera)
 
@@ -76,7 +76,7 @@ $(RPICAM_STAMP):
 		-Denable_drm=disabled \
 		-Denable_qt=disabled && \
 	ninja -C build && \
-	touch $@
+	touch build/built
 
 # -------------------------------------------------------------------------------------------
 # Build FinalCut submodule
@@ -94,7 +94,7 @@ $(FINALCUT_STAMP):
 		 --prefix=$$(pwd) \
 		CPPFLAGS="-I$$(cd .. && pwd)" && \
 	make && make install && \
-	touch $@
+	touch built
 
 # -------------------------------------------------------------------------------------------
 # Build main program
