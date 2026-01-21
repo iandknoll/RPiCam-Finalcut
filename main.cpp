@@ -88,19 +88,19 @@ void VidStart(std::string const& name) {
 		// Build argv array w/ options
 		// Adjust these values according to your own needs:
 		std::vector<std::string> args = {
-			"program",					// argv format requires a program name as first entry
-			"--output", name,			// file name
-			"--timeout", "40min",		// MAX recording time
-			"--codec", "h264",			// codec for video encoding/decoding
-			"--profile", "baseline",	// Compression profile
-			"--framerate", "240",		// fps goal
-			"--width", "800",			// frame width (in pixels)
-			"--height", "800",			// frame height (in pixels)
-			"--awbgains", "2,2",		// disable auto white balance
-			"--shutter", "3000us",		// Shutter speed (us)
-			"--gain", "2",				// analog gain
-			"--denoise", "cdn_off",		// turn off color denoise (for fps)
-			"--nopreview"				// turn off preview (for fps)
+			"program",								// argv format requires a program name as first entry
+			"--output", name,						// file name
+			"--timeout", "40min",					// MAX recording time
+			"--codec", "h264",						// codec for video encoding/decoding
+			"--profile", "baseline",				// Compression profile
+			"--framerate", "240",					// fps goal
+			"--viewfinder-width", "800",			// frame width (in pixels)
+			"--viewfinder-height", "800",			// frame height (in pixels)
+			"--awbgains", "2,2",					// disable auto white balance
+			"--shutter", "3000us",					// Shutter speed (us)
+			"--gain", "2",							// analog gain
+			"--denoise", "cdn_off",					// turn off color denoise (for fps)
+			"--nopreview"							// turn off preview (for fps)
 		};
 
 		std::vector<char*> argv;
@@ -367,6 +367,26 @@ class FileName : public finalcut::FLineEdit
 		}
 };
 
+class ErrLog : public finalcut::FTextView
+{
+	public:
+
+		explicit ErrLog (finalcut::FWidget* parent = nullptr)
+			: finalcut::FTextView{parent}
+		{
+			initLayout()
+		}
+
+	private:
+
+		void initLayout()
+		{
+			setGeometry (finalcut::FPoint{5,11}, finalcut::FSize{50,3});
+			setReadOnly(true);
+			setText("");
+		}
+}
+
 class Stopwatch : public finalcut::FLabel
 {
 
@@ -505,7 +525,7 @@ class MainDialog : public finalcut::FDialog
 			checkMinValue(x);
 			checkMinValue(y);
 			
-			setGeometry (finalcut::FPoint{x,y}, finalcut::FSize{56,15});	
+			setGeometry (finalcut::FPoint{x,y}, finalcut::FSize{56,18});	
 
 			finalcut::FDialog::initLayout();
 		}
@@ -596,6 +616,7 @@ class MainDialog : public finalcut::FDialog
 			}
 
 			try {
+				ErrLog.setText("");
 				camera_thread = std::thread([this, filename = std_filename]()
 				{
 					try {
@@ -658,12 +679,14 @@ class MainDialog : public finalcut::FDialog
 			switch (info.type)
 			{
 				case StopType::USER: // succesful operation
+					ErrLog.setText("");
 					status.setText(
 						finalcut::FString("Video saved as: ") + 
 						finalcut::FString(std_filename)
 						);
 					break;
 				case StopType::TIMEOUT: // timeout
+					ErrLog.setText("");
 					status.setText(
 						finalcut::FString("MAX DURATION. Video saved as: ") +
 						finalcut::FString(std_filename)
@@ -671,10 +694,10 @@ class MainDialog : public finalcut::FDialog
 					break;
 				case StopType::ERROR: // video error
 					if (info.error_message.empty()) {
-						status.setText(finalcut::FString("ERROR: Recording failed"));
+						ErrLog.setText(finalcut::FString("ERROR: Recording failed"));
 						// Recording failed, but no error message (give generic)
 					} else {
-						status.setText(
+						ErrLog.setText(
 							finalcut::FString("ERROR: ") +
 							finalcut::FString(info.error_message)
 							);
@@ -682,7 +705,7 @@ class MainDialog : public finalcut::FDialog
 					}
 					break;
 				default:
-					status.setText(finalcut::FString("ERROR: Unknown stop reason"));
+					ErrLog.setText(finalcut::FString("ERROR: Unknown stop reason"));
 					break;
 			}
 
