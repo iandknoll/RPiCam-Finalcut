@@ -15,11 +15,11 @@ TARGET := Reaching_Cam
 # Submodule Directories
 RPICAM_DIR = rpicam-apps
 RPICAM_BUILD_DIR = $(RPICAM_DIR)/build
-RPICAM_STAMP = $(RPICAM_BUILD_DIR)./built
+RPICAM_STAMP = $(RPICAM_BUILD_DIR)/built
 
 FINALCUT_DIR = finalcut
 FINALCUT_BUILD_DIR = $(FINALCUT_DIR)/build
-FINALCUT_STAMP = $(FINALCUT_BUILD_DIR)./built
+FINALCUT_STAMP = $(FINALCUT_BUILD_DIR)/built
 
 # Compiler
 CXX := g++
