@@ -384,7 +384,7 @@ class ErrLog : public finalcut::FTextView
 			setGeometry (finalcut::FPoint{5,11}, finalcut::FSize{50,3});
 			setText("");
 		}
-}
+};
 
 class Stopwatch : public finalcut::FLabel
 {
