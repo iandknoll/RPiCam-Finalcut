@@ -381,7 +381,7 @@ class ErrLog : public finalcut::FTextView
 
 		void initLayout()
 		{
-			setGeometry (finalcut::FPoint{5,11}, finalcut::FSize{50,3});
+			setGeometry (finalcut::FPoint{3,13}, finalcut::FSize{50,3});
 			setText("");
 		}
 };
