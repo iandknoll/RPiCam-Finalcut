@@ -80,7 +80,7 @@ void VidStart(std::string const& name) {
 			return false;
 		}
 	};
-	
+
 	try
 	{
 		VideoOptions *options = app.GetOptions();
@@ -117,24 +117,24 @@ void VidStart(std::string const& name) {
 		if (!options->Parse(argv.size(), argv.data())) {
 			throw std::runtime_error("Failed to parse options");
 		}
-		
+
 		std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
 
-		app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), 
-			std::placeholders::_1, 
-			std::placeholders::_2, 
-			std::placeholders::_3, 
+		app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(),
+			std::placeholders::_1,
+			std::placeholders::_2,
+			std::placeholders::_3,
 			std::placeholders::_4));
 
-		app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(), 
+		app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(),
 			std::placeholders::_1));
-		
+
 		app.OpenCamera();
 
 		auto start_time = std::chrono::high_resolution_clock::now();
-		
+
 		app.ConfigureVideo(get_colourspace_flags(options->Get().codec));
-		
+
 		app.StartEncoder();
 		EncoderOn = true;
 
@@ -150,7 +150,7 @@ void VidStart(std::string const& name) {
 				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
-				} else {	
+				} else {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::USER, ""};
 				}
@@ -216,7 +216,7 @@ void VidStart(std::string const& name) {
 			}
 
 			if (stop_camera.load())
-			{				
+			{
 				if (!TryCameraOff() || !TryEncoderOff()) {
 					std::lock_guard<std::mutex> lock(camera_stop_info_mutex);
 					camera_stop_info = CameraStopInfo{StopType::ERROR, "Failed to stop camera/encoder"};
@@ -287,8 +287,8 @@ class ConfirmButton : public finalcut::FButton
 		void initLayout()
 		{
 			setText ("Start Video");
-			setGeometry(finalcut::FPoint{22,8}, finalcut::FSize{12,1});
-			
+			setGeometry(finalcut::FPoint{20,8}, finalcut::FSize{14,1});
+
 			finalcut::FButton::initLayout();
 		}
 };
@@ -308,10 +308,10 @@ class YesButton : public finalcut::FButton
 
 		void initLayout()
 		{
-			
+
 			setText ("Yes");
-			setGeometry(finalcut::FPoint{23,8}, finalcut::FSize{3,1});
-			
+			setGeometry(finalcut::FPoint{20,8}, finalcut::FSize{4,1});
+
 			finalcut::FButton::initLayout();
 		}
 };
@@ -332,7 +332,7 @@ class NoButton : public finalcut::FButton
 		void initLayout()
 		{
 			setText ("No");
-			setGeometry(finalcut::FPoint{32,8}, finalcut::FSize{3,1});
+			setGeometry(finalcut::FPoint{31,8}, finalcut::FSize{4,1});
 
 			finalcut::FButton::initLayout();
 		}
@@ -353,14 +353,14 @@ class FileName : public finalcut::FLineEdit
 
 		void initLayout()
 		{
-			setInputFilter("[a-zA-Z0-9 ._-]");	
+			setInputFilter("[a-zA-Z0-9 ._-]");
 			setMaxLength(255);
-			
+
 			std::string fsuggestion{filename_time()};
 
 			setText (finalcut::FString{fsuggestion});
 			setGeometry (finalcut::FPoint{20,4}, finalcut::FSize{30,1});
-			
+
 			setLabelText("File Name: ");
 
 			finalcut::FLineEdit::initLayout();
