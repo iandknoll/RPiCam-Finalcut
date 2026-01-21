@@ -374,7 +374,7 @@ class ErrLog : public finalcut::FTextView
 		explicit ErrLog (finalcut::FWidget* parent = nullptr)
 			: finalcut::FTextView{parent}
 		{
-			initLayout()
+			initLayout();
 		}
 
 	private:
@@ -382,7 +382,6 @@ class ErrLog : public finalcut::FTextView
 		void initLayout()
 		{
 			setGeometry (finalcut::FPoint{5,11}, finalcut::FSize{50,3});
-			setReadOnly(true);
 			setText("");
 		}
 }
@@ -501,6 +500,7 @@ class MainDialog : public finalcut::FDialog
 		ConfirmButton confirmbutton{this};
 		YesButton yesbutton{this};
 		NoButton nobutton{this};
+		ErrLog errors{this};
 		Stopwatch status{this};
 		
 		bool showYesNo{false};
@@ -616,7 +616,7 @@ class MainDialog : public finalcut::FDialog
 			}
 
 			try {
-				ErrLog.setText("");
+				errors.setText("");
 				camera_thread = std::thread([this, filename = std_filename]()
 				{
 					try {
@@ -679,14 +679,14 @@ class MainDialog : public finalcut::FDialog
 			switch (info.type)
 			{
 				case StopType::USER: // succesful operation
-					ErrLog.setText("");
+					errors.setText("");
 					status.setText(
 						finalcut::FString("Video saved as: ") + 
 						finalcut::FString(std_filename)
 						);
 					break;
 				case StopType::TIMEOUT: // timeout
-					ErrLog.setText("");
+					errors.setText("");
 					status.setText(
 						finalcut::FString("MAX DURATION. Video saved as: ") +
 						finalcut::FString(std_filename)
@@ -694,10 +694,10 @@ class MainDialog : public finalcut::FDialog
 					break;
 				case StopType::ERROR: // video error
 					if (info.error_message.empty()) {
-						ErrLog.setText(finalcut::FString("ERROR: Recording failed"));
+						errors.setText(finalcut::FString("ERROR: Recording failed"));
 						// Recording failed, but no error message (give generic)
 					} else {
-						ErrLog.setText(
+						errors.setText(
 							finalcut::FString("ERROR: ") +
 							finalcut::FString(info.error_message)
 							);
@@ -705,7 +705,7 @@ class MainDialog : public finalcut::FDialog
 					}
 					break;
 				default:
-					ErrLog.setText(finalcut::FString("ERROR: Unknown stop reason"));
+					errors.setText(finalcut::FString("ERROR: Unknown stop reason"));
 					break;
 			}
 
