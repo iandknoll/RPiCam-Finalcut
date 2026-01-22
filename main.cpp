@@ -91,11 +91,13 @@ void VidStart(std::string const& name) {
 			"program",								// argv format requires a program name as first entry
 			"--output", name,						// file name
 			"--timeout", "40min",					// MAX recording time
-			"--codec", "h264",						// codec for video encoding/decoding
+			"--codec", "mjpeg",						// codec for video encoding/decoding
 			"--profile", "baseline",				// Compression profile
 			"--framerate", "240",					// fps goal
-			"--viewfinder-width", "800",			// frame width (in pixels)
-			"--viewfinder-height", "800",			// frame height (in pixels)
+			"--viewfinder-width", "800",			// frame width (in pixels) (ISP level)
+			"--viewfinder-height", "800",			// frame height (in pixels) (ISP level)
+			"--width", "800",						// frame width (in pixels) (encoder level)
+			"--height", "800",						// frame height (in pixels) (encoder level)
 			"--awbgains", "2,2",					// disable auto white balance
 			"--shutter", "3000us",					// Shutter speed (us)
 			"--gain", "2",							// analog gain
